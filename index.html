@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#111111"><link rel="manifest" href="manifest.json">
-<title>RHGonçalves | Gestão de Orçamentos</title><link rel="stylesheet" href="styles.css?v=20-ui2">
+<title>RHGonçalves | Gestão de Orçamentos</title><link rel="stylesheet" href="styles.css?v=20-photos1">
 </head>
 <body>
 <header class="app-header">
@@ -62,7 +62,7 @@
 <label>Desconto<input id="discount" type="number" min="0" step=".01" value="0"></label>
 <div class="grand"><span>Total</span><b id="grandTotal">R$ 0,00</b></div></div></div></details>
 
-<details class="card accordion-card" data-accordion="photos"><summary class="accordion-summary"><span class="accordion-number">6</span><span class="accordion-heading"><strong>Fotos do serviço</strong><small>Anexe imagens do local, instalação ou projeto</small></span><span class="accordion-chevron">⌄</span></summary><div class="accordion-body"><div class="section-toolbar"><span class="hint">As fotos ficam vinculadas a este orçamento.</span><label class="photo-add btn primary" for="photoInput">📷 Adicionar fotos</label><input id="photoInput" type="file" accept="image/*" capture="environment" multiple hidden></div><div id="photoGallery" class="photo-gallery"></div><p id="photoStatus" class="hint"></p></div></details>
+<details class="card accordion-card" data-accordion="photos"><summary class="accordion-summary"><span class="accordion-number">6</span><span class="accordion-heading"><strong>Fotos do serviço</strong><small>Anexe imagens do local, instalação ou projeto</small></span><span class="accordion-chevron">⌄</span></summary><div class="accordion-body"><div class="section-toolbar"><span class="hint">As fotos ficam vinculadas a este orçamento.</span><div class="photo-actions"><label class="photo-add btn primary" for="photoCameraInput">📷 Tirar foto</label><label class="photo-add btn ghost" for="photoInput">🖼️ Escolher da galeria/arquivos</label></div><input id="photoCameraInput" type="file" accept="image/*" capture="environment" multiple hidden><input id="photoInput" type="file" accept="image/*" multiple hidden></div><div id="photoGallery" class="photo-gallery"></div><p id="photoStatus" class="hint"></p></div></details>
 
 <details class="card accordion-card" data-accordion="conditions"><summary class="accordion-summary"><span class="accordion-number">7</span><span class="accordion-heading"><strong>Condições comerciais</strong><small>Validade, garantia e formas de pagamento</small></span><span class="accordion-chevron">⌄</span></summary><div class="accordion-body"><textarea id="conditions" rows="4">Orçamento válido por 7 dias.
 Garantia de mão de obra: 90 dias.
@@ -146,7 +146,7 @@ Pagamento: Pix, cartão ou dinheiro.</textarea></div></details>
 
 <template id="serviceTpl"><div class="row service-grid item-card"><div class="desc-wrap item-description"><label>Descrição do serviço<input class="desc" placeholder="Ex.: instalação de ponto elétrico"><small class="source"></small></label></div><label class="item-field">Quantidade<input class="qty" type="number" min="0" value="1"></label><label class="item-field">Valor unitário (R$)<input class="unit" type="number" min="0" step=".01" value="0"></label><div class="item-total"><span>Subtotal</span><b class="line">R$ 0,00</b></div><button class="remove" type="button" aria-label="Remover serviço">Remover ×</button></div></template>
 <template id="materialTpl"><div class="row material-grid item-card"><div class="desc-wrap item-description"><label>Material / especificação<input class="desc" placeholder="Ex.: cabo flexível 750V – 2,5 mm²"><small class="source"></small></label></div><label class="item-field">Quantidade<input class="qty" type="number" min="0" step=".01" value="1"></label><label class="item-field">Valor unitário (R$)<input class="unit" type="number" min="0" step=".01" value="0"></label><label class="item-field supply-field">Fornecimento<select class="supply"><option>RHGonçalves</option><option>Cliente</option><option>Sem preço</option></select></label><div class="item-total"><span>Subtotal</span><b class="line">R$ 0,00</b></div><button class="remove" type="button" aria-label="Remover material">Remover ×</button></div></template>
-<script src="app.js?v=20-ui2"></script>
+<script src="app.js?v=20-photos1"></script>
 
 <script>
 (function () {

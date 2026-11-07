@@ -64,93 +64,67 @@ function scheduleHistorySync(d){
   historySyncTimer=setTimeout(()=>syncQuoteToServer(d),350);
 }
 
-const PHOTO_DB_NAME='rhgAppPhotos';
-const PHOTO_DB_VERSION=1;
-let photoObjectUrls=[];
-
-function openPhotoDB(){
- return new Promise((resolve,reject)=>{
-   const req=indexedDB.open(PHOTO_DB_NAME,PHOTO_DB_VERSION);
-   req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains('photos'))req.result.createObjectStore('photos',{keyPath:'id',autoIncrement:true})};
-   req.onsuccess=()=>resolve(req.result);
-   req.onerror=()=>reject(req.error||new Error('Não foi possível abrir o armazenamento de fotos.'));
- });
+let photoDataUrls=[];
+async function photoApi(action,payload={}){
+ const response=await fetch('/api/rhg/photos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...payload})});
+ const data=await response.json();
+ if(!response.ok||!data.ok)throw new Error(data.error||'Falha ao acessar as fotos compartilhadas.');
+ return data;
 }
-async function savePhotoBlob(quoteId,blob,name,description=''){
- const db=await openPhotoDB();
- return new Promise((resolve,reject)=>{
-   const tx=db.transaction('photos','readwrite');
-   const req=tx.objectStore('photos').add({quoteId,blob,name,description:String(description||'').trim(),createdAt:new Date().toISOString()});
-   req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error);
- });
+async function migrateLegacyLocalPhotos(quoteId){
+ // Transfere fotos da versão anterior (IndexedDB local) para o Drive uma única vez.
+ try{
+   const db=await new Promise((resolve,reject)=>{const req=indexedDB.open('rhgAppPhotos',1);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});
+   if(!db.objectStoreNames.contains('photos')){db.close();return 0;}
+   const oldPhotos=await new Promise((resolve,reject)=>{const tx=db.transaction('photos','readonly');const req=tx.objectStore('photos').getAll();req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error);});
+   const matching=oldPhotos.filter(photo=>String(photo.quoteId)===String(quoteId));
+   let migrated=0;
+   for(const photo of matching){
+     const normalized=await imageBlobToJpeg(photo.blob,1600,1400);
+     await photoApi('upload',{quoteId:String(quoteId),name:photo.name||'foto-importada.jpg',mimeType:'image/jpeg',dataUrl:normalized.dataUrl,description:photo.description||''});
+     await new Promise((resolve,reject)=>{const tx=db.transaction('photos','readwrite');tx.objectStore('photos').delete(photo.id);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
+     migrated++;
+   }
+   db.close();return migrated;
+ }catch(e){console.warn('Migração de fotos locais não concluída:',e);return 0;}
 }
-async function getPhotos(quoteId){
- if(!quoteId)return [];
- const db=await openPhotoDB();
- return new Promise((resolve,reject)=>{
-   const tx=db.transaction('photos','readonly');
-   const req=tx.objectStore('photos').getAll();
-   req.onsuccess=()=>resolve(req.result.filter(x=>x.quoteId===quoteId).sort((a,b)=>String(a.createdAt).localeCompare(String(b.createdAt))));
-   req.onerror=()=>reject(req.error);
- });
-}
-async function deletePhoto(photoId){
- const db=await openPhotoDB();
- return new Promise((resolve,reject)=>{const tx=db.transaction('photos','readwrite');const req=tx.objectStore('photos').delete(photoId);req.onsuccess=()=>resolve();req.onerror=()=>reject(req.error)});
-}
-async function deletePhotosForQuote(quoteId){
- if(!quoteId)return;
- const db=await openPhotoDB();
- return new Promise((resolve,reject)=>{
-   const tx=db.transaction('photos','readwrite');
-   const store=tx.objectStore('photos');
-   const req=store.getAll();
-   req.onsuccess=()=>{
-     (req.result||[]).filter(photo=>photo.quoteId===quoteId).forEach(photo=>store.delete(photo.id));
-   };
-   req.onerror=()=>reject(req.error);
-   tx.oncomplete=()=>resolve();
-   tx.onerror=()=>reject(tx.error);
- });
-}
-async function updatePhotoDescription(photoId,description){
- const db=await openPhotoDB();
- return new Promise((resolve,reject)=>{
-   const tx=db.transaction('photos','readwrite');
-   const store=tx.objectStore('photos');
-   const req=store.get(photoId);
-   req.onsuccess=()=>{const photo=req.result;if(!photo)return reject(new Error('Foto não encontrada.'));photo.description=String(description||'').trim();store.put(photo);};
-   req.onerror=()=>reject(req.error);
-   tx.oncomplete=()=>resolve();
-   tx.onerror=()=>reject(tx.error);
- });
-}
-function revokePhotoUrls(){photoObjectUrls.forEach(url=>URL.revokeObjectURL(url));photoObjectUrls=[];}
 async function renderPhotos(quoteId){
  const gallery=$('#photoGallery'); if(!gallery)return;
- revokePhotoUrls(); gallery.innerHTML='';
+ gallery.innerHTML='';
  if(!quoteId){$('#photoStatus').textContent='Salve o orçamento para começar a anexar fotos.';return}
  try{
-   const photos=await getPhotos(quoteId);
-   $('#photoStatus').textContent=photos.length?`${photos.length} foto${photos.length===1?'':'s'} anexada${photos.length===1?'':'s'} a este orçamento.`:'Nenhuma foto anexada.';
-   photos.forEach(photo=>{
+   const migrated=await migrateLegacyLocalPhotos(quoteId);
+   const result=await photoApi('list',{quoteId});
+   const photos=result.photos||[];
+   if(migrated) $('#photoStatus').textContent=`${migrated} foto(s) antiga(s) transferida(s) para o armazenamento compartilhado.`;
+   $('#photoStatus').textContent=photos.length?`${photos.length} foto${photos.length===1?'':'s'} anexada${photos.length===1?'':'s'} a este orçamento. Sincronizadas entre dispositivos.`:'Nenhuma foto anexada.';
+   for(const photo of photos){
      const card=document.createElement('div');card.className='photo-item';
-     const img=document.createElement('img');img.alt=photo.name||'Foto do serviço';const url=URL.createObjectURL(photo.blob);photoObjectUrls.push(url);img.src=url;
-     const description=document.createElement('textarea');description.className='photo-description';description.placeholder='Descreva esta foto (opcional)';description.value=photo.description||'';description.rows=2;description.addEventListener('change',async()=>{await updatePhotoDescription(photo.id,description.value)});
-     const btn=document.createElement('button');btn.type='button';btn.className='photo-remove';btn.textContent='×';btn.title='Remover foto';btn.onclick=async()=>{await deletePhoto(photo.id);await renderPhotos(quoteId)};
-     card.append(img,description,btn);gallery.appendChild(card);
-   });
- }catch(e){$('#photoStatus').textContent='Não foi possível carregar as fotos: '+e.message}
+     const img=document.createElement('img');img.alt=photo.name||'Foto do serviço';img.loading='lazy';
+     const desc=document.createElement('textarea');desc.className='photo-description';desc.placeholder='Descreva esta foto (opcional)';desc.value=photo.description||'';desc.rows=2;
+     const btn=document.createElement('button');btn.type='button';btn.className='photo-remove';btn.textContent='×';btn.title='Remover foto';
+     card.append(img,desc,btn);gallery.appendChild(card);
+     try{const image=await photoApi('get',{photoId:photo.id});img.src=image.dataUrl;}catch(err){img.alt='Não foi possível carregar esta imagem';}
+     desc.addEventListener('change',async()=>{try{await photoApi('update',{photoId:photo.id,description:desc.value});$('#photoStatus').textContent='Descrição da foto atualizada.';}catch(e){$('#photoStatus').textContent='Erro ao atualizar descrição: '+e.message;}});
+     btn.onclick=async()=>{if(!confirm('Remover esta foto do orçamento?'))return;try{await photoApi('delete',{photoId:photo.id});await renderPhotos(quoteId);}catch(e){$('#photoStatus').textContent='Não foi possível remover a foto: '+e.message;}};
+   }
+ }catch(e){$('#photoStatus').textContent='Não foi possível carregar as fotos compartilhadas: '+e.message;}
 }
 async function handlePhotos(files){
  if(!files?.length)return;
  let d=JSON.parse(localStorage.getItem(draftKey)||'null');
  if(!d){d=saveDraft();}
- const quoteId=d.id;
+ const quoteId=String(d.id);
+ const status=$('#photoStatus');
  try{
-   for(const file of files){if(file.type.startsWith('image/'))await savePhotoBlob(quoteId,file,file.name,'')}
+   for(const file of files){
+     if(!file.type.startsWith('image/'))continue;
+     status.textContent=`Preparando ${file.name}...`;
+     const normalized=await imageBlobToJpeg(file,1600,1400);
+     await photoApi('upload',{quoteId,name:file.name,mimeType:'image/jpeg',dataUrl:normalized.dataUrl});
+   }
    await renderPhotos(quoteId);
- }catch(e){$('#photoStatus').textContent='Não foi possível salvar as fotos: '+e.message}
+ }catch(e){status.textContent='Não foi possível enviar as fotos: '+e.message;}
 }
 
 function addRow(type,d={}){
@@ -265,7 +239,7 @@ async function clearAll(){
  if(advice) advice.textContent='';
  if(message) message.textContent='';
  if(previous?.id){
-   try{await deletePhotosForQuote(previous.id);}catch(e){console.warn('Não foi possível limpar as fotos do orçamento:',e);}
+   // As fotos de orçamentos já salvos permanecem no Drive, vinculadas ao registro.
  }
  revokePhotoUrls();
  await renderPhotos(null);
@@ -294,7 +268,7 @@ $('#addService').onclick=()=>addRow('service');$('#addMaterial').onclick=()=>add
 $('#newBtn').onclick=async()=>{if(confirm('Começar um novo orçamento?'))await clearAll()};
 loadSharedHistory();
 $('#historySearch').oninput=renderHistory;$('#historyStatus').onchange=renderHistory;$('#quoteStatus').onchange=()=>{if(localStorage.getItem(draftKey))saveDraft()};
-$('#photoInput').onchange=async e=>{await handlePhotos(e.target.files);e.target.value=''};
+$('#photoInput').onchange=async e=>{await handlePhotos(e.target.files);e.target.value=''};$('#photoCameraInput').onchange=async e=>{await handlePhotos(e.target.files);e.target.value=''};
 
 $('#interpretBtn').onclick=async()=>{
  const q=$('#serviceDescription').value.trim();
@@ -523,7 +497,7 @@ async function generateRHGQuotePDF(){
   // Usa explicitamente a descrição recém-gerada, mesmo quando o rascunho
   // ainda continha uma versão anterior em memória.
   d.quoteDescription=generatedDescription;
-  const photos=await getPhotos(d.id);
+  const photos=(await photoApi('list',{quoteId:String(d.id)})).photos||[];
 
   const doc=new JSZipPDF({
     orientation:'portrait',
@@ -732,7 +706,8 @@ async function generateRHGQuotePDF(){
         doc.roundedRect(x,top,photoW,cardH,1.5,1.5,'FD');
 
         try{
-          const normalized=await imageBlobToJpeg(photo.blob,1200,1000);
+          const remote=await photoApi('get',{photoId:photo.id});
+          const normalized=await imageBlobToJpeg(await (await fetch(remote.dataUrl)).blob(),1200,1000);
           const ratio=Math.min((photoW-4)/normalized.width,(photoH-4)/normalized.height);
           const dw=normalized.width*ratio,dh=normalized.height*ratio;
           const ix=x+(photoW-dw)/2,iy=top+2+(photoH-dh)/2;

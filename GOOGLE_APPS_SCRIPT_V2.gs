@@ -115,6 +115,73 @@ function deactivateRow(sheetName, rowNumber) {
   }
 }
 
+
+// =====================================================
+// FOTOS DOS ORÇAMENTOS — armazenamento compartilhado no Drive
+// A pasta é criada automaticamente na primeira utilização.
+// =====================================================
+function getRHGPhotosFolder() {
+  const props = PropertiesService.getScriptProperties();
+  let folderId = props.getProperty('RHG_PHOTOS_FOLDER_ID');
+  if (folderId) {
+    try { return DriveApp.getFolderById(folderId); } catch (e) { props.deleteProperty('RHG_PHOTOS_FOLDER_ID'); }
+  }
+  const folder = DriveApp.createFolder('RHG App 2.0 - Fotos dos Orçamentos');
+  props.setProperty('RHG_PHOTOS_FOLDER_ID', folder.getId());
+  return folder;
+}
+function getRHGPhotoMetadata(file) {
+  let meta = {};
+  try { meta = JSON.parse(file.getDescription() || '{}'); } catch (e) {}
+  return { id:file.getId(), quoteId:String(meta.quoteId || ''), name:meta.name || file.getName(), description:meta.description || '', createdAt:meta.createdAt || file.getDateCreated().toISOString(), mimeType:file.getMimeType() };
+}
+function handleRHGPhotoAction(action, body) {
+  const folder = getRHGPhotosFolder();
+  if (action === 'photo_upload') {
+    const quoteId = String(body.quoteId || '').trim();
+    const dataUrl = String(body.dataUrl || '');
+    if (!quoteId) throw new Error('ID do orçamento não informado.');
+    const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([\s\S]+)$/);
+    if (!match) throw new Error('Imagem inválida. Envie um arquivo de imagem.');
+    const mimeType = match[1];
+    const bytes = Utilities.base64Decode(match[2]);
+    if (bytes.length > 8 * 1024 * 1024) throw new Error('Imagem excede o limite de 8 MB após otimização.');
+    const name = String(body.name || 'foto.jpg').replace(/[\\/:*?"<>|]/g, '_').slice(0, 120);
+    const blob = Utilities.newBlob(bytes, mimeType, name);
+    const file = folder.createFile(blob);
+    const meta = { quoteId, name, description:'', createdAt:new Date().toISOString() };
+    file.setDescription(JSON.stringify(meta));
+    return { ok:true, photo:getRHGPhotoMetadata(file) };
+  }
+  const photoId = String(body.photoId || '').trim();
+  if (action === 'photo_list') {
+    const quoteId = String(body.quoteId || '').trim();
+    if (!quoteId) throw new Error('ID do orçamento não informado.');
+    const photos = []; const files = folder.getFiles();
+    while (files.hasNext()) { const file = files.next(); const photo = getRHGPhotoMetadata(file); if (photo.quoteId === quoteId) photos.push(photo); }
+    photos.sort((a,b) => String(a.createdAt).localeCompare(String(b.createdAt)));
+    return { ok:true, photos };
+  }
+  if (!photoId) throw new Error('ID da foto não informado.');
+  const file = DriveApp.getFileById(photoId);
+  let belongsToRHGFolder = false;
+  const parents = file.getParents();
+  while (parents.hasNext()) { if (parents.next().getId() === folder.getId()) belongsToRHGFolder = true; }
+  if (!belongsToRHGFolder) throw new Error('Foto não encontrada na pasta compartilhada da RHG.');
+  if (action === 'photo_get') {
+    const blob = file.getBlob();
+    return { ok:true, dataUrl:'data:' + blob.getContentType() + ';base64,' + Utilities.base64Encode(blob.getBytes()) };
+  }
+  const meta = getRHGPhotoMetadata(file);
+  if (action === 'photo_update') {
+    meta.description = String(body.description || '').slice(0, 1000);
+    file.setDescription(JSON.stringify({ quoteId:meta.quoteId, name:meta.name, description:meta.description, createdAt:meta.createdAt }));
+    return { ok:true, photo:getRHGPhotoMetadata(file) };
+  }
+  if (action === 'photo_delete') { file.setTrashed(true); return { ok:true, deleted:true }; }
+  throw new Error('Ação de foto não reconhecida.');
+}
+
 function doGet(e) {
   try {
     verifyApiKey(e && e.parameter ? e.parameter.apiKey : '');
@@ -131,6 +198,7 @@ function doPost(e) {
     const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     verifyApiKey(body.apiKey);
     const action = body.action;
+    if (String(action || '').indexOf('photo_') === 0) return jsonResponse(handleRHGPhotoAction(action, body));
     const sheet = body.sheet;
     if (!action) throw new Error('Ação não informada.');
     if (!sheet) throw new Error('Aba não informada.');

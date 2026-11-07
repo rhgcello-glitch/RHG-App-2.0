@@ -1,9 +1,9 @@
-const CACHE_NAME = 'rhg-app-v20-ui3';
+const CACHE_NAME = 'rhg-app-v20-photos1';
 const APP_SHELL = [
   '/',
   '/index.html',
-  '/styles.css?v=20-ui3',
-  '/app.js?v=20-ui3',
+  '/styles.css?v=20-photos1',
+  '/app.js?v=20-photos1',
   '/manifest.json',
   '/assets/icons/icon-192.png',
   '/assets/icons/icon-512.png'

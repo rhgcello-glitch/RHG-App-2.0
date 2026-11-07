@@ -1,3 +1,3 @@
-# RHG App 2.0
+# RHG App 2.0 — pacote Fotos Compartilhadas
 
-Pacote de desenvolvimento UI 3. Consulte `README-v2.0-ui3.md` para alterações e instruções de teste.
+Consulte `README-v2.0-photos.md` para configuração do Apps Script, implantação e testes.

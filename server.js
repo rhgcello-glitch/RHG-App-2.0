@@ -103,6 +103,26 @@ async function writeRHGSheets(sheet, action, data = {}, row = null) {
 
   return result;
 }
+async function callRHGPhotoAction(action, payload = {}) {
+  if (!RHG_SHEETS_URL) throw new Error("RHG_SHEETS_URL não configurada.");
+  const response = await fetch(RHG_SHEETS_URL, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: `photo_${action}`, ...payload, apiKey: RHG_SHEETS_API_KEY })
+  });
+  const text = await response.text();
+  let data; try { data = JSON.parse(text); } catch { throw new Error("Resposta inválida do Google Apps Script ao acessar fotos."); }
+  if (!response.ok || data.ok === false) throw new Error(data.error || `Google Apps Script retornou HTTP ${response.status}`);
+  return data;
+}
+function readJsonRequest(req, limit = 12 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    let raw = "", size = 0;
+    req.on("data", chunk => { size += chunk.length; if (size > limit) { reject(new Error("Arquivo muito grande. Tente uma imagem menor.")); req.destroy(); return; } raw += chunk.toString("utf8"); });
+    req.on("end", () => { try { resolve(JSON.parse(raw || "{}")); } catch { reject(new Error("JSON inválido.")); } });
+    req.on("error", reject);
+  });
+}
+
 function normalizeText(value) {
   return String(value || "")
     .normalize("NFD")
@@ -981,6 +1001,21 @@ const server=http.createServer(async(req,res)=>{
 
       return;
     }
+  // =========================================================
+  // FOTOS DOS ORÇAMENTOS — armazenamento compartilhado no Google Drive
+  // =========================================================
+  if (req.url.split("?")[0] === "/api/rhg/photos" && (req.method === "GET" || req.method === "POST")) {
+    try {
+      const body = req.method === "POST" ? await readJsonRequest(req) : {};
+      const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+      const action = req.method === "GET" ? "list" : body.action;
+      const payload = req.method === "GET" ? { quoteId: url.searchParams.get("quoteId") || "" } : body;
+      if (! ["list", "upload", "get", "delete", "update"].includes(action)) return send(res, 400, { ok:false, error:"Ação de fotos inválida." });
+      const result = await callRHGPhotoAction(action, payload);
+      return send(res, 200, result);
+    } catch (e) { return send(res, e.message.includes("muito grande") ? 413 : 502, { ok:false, error:e.message }); }
+  }
+
   // =========================================================
   // RHG CATALOG - CACHE DE MATERIAIS E SERVIÇOS
   // =========================================================
