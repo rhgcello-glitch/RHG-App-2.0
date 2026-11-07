@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#111111"><link rel="manifest" href="manifest.json">
-<title>RHGonçalves | Gestão de Orçamentos</title><link rel="stylesheet" href="styles.css?v=20-ui1">
+<title>RHGonçalves | Gestão de Orçamentos</title><link rel="stylesheet" href="styles.css?v=20-ui2">
 </head>
 <body>
 <header class="app-header">
@@ -38,35 +38,35 @@
 <section id="quote" class="page hidden">
 <div class="title"><div><h1>Novo orçamento</h1><p id="quoteNumberLabel" class="quote-number">Ainda não salvo</p><p>Descreva, revise, calcule e finalize.</p></div><button id="newBtn" class="btn ghost">Novo</button></div>
 
-<section class="card"><h2>1. Cliente</h2><div class="grid">
+<details class="card accordion-card" data-accordion="client"><summary class="accordion-summary"><span class="accordion-number">1</span><span class="accordion-heading"><strong>Cliente</strong><small>Dados e contato do cliente</small></span><span class="accordion-chevron">⌄</span></summary><div class="accordion-body"><div class="grid">
 <label>Nome<input id="clientName"></label><label>Telefone<input id="clientPhone"></label>
 <label>Tipo<select id="clientType"><option>Residencial</option><option>Comercial</option></select></label>
 <label>Perfil<select id="clientProfile"><option>Comum</option><option>Baixa</option><option>Alta</option><option>Alto padrão</option><option>Comercial</option></select></label>
 <label class="full">Endereço<input id="clientAddress"></label>
-</div></section>
+</div></div></details>
 
-<section class="card"><h2>2. Informações para o RHG-Bot</h2>
+<details class="card accordion-card" data-accordion="ai"><summary class="accordion-summary"><span class="accordion-number">2</span><span class="accordion-heading"><strong>Informações para o RHG-Bot</strong><small>Descreva o serviço e interprete com IA</small></span><span class="accordion-chevron">⌄</span></summary><div class="accordion-body">
 <p class="hint">Descreva o pedido do cliente em linguagem natural. A descrição profissional do PDF será gerada automaticamente a partir dos serviços e materiais finais.</p>
 <textarea id="serviceDescription" rows="5" placeholder="Ex.: instalação de 5 pontos de iluminação no jardim, ao longo de 5 metros, criando a infraestrutura elétrica."></textarea>
 <div class="bar"><button id="interpretBtn" class="btn primary">🔍 Interpretar com RHG-Bot</button><span id="interpretStatus" class="hint">A integração real será conectada ao agente.</span></div>
-</section>
+</div></details>
 
-<section class="card"><div class="head"><h2>3. Serviços</h2><button id="addService" class="btn primary">+ Adicionar</button></div>
-<div class="thead service-grid"><span>Qtd.</span><span>Serviço</span><span>Unitário</span><span>Total</span><span></span></div><div id="services"></div></section>
+<details class="card accordion-card" data-accordion="services"><summary class="accordion-summary"><span class="accordion-number">3</span><span class="accordion-heading"><strong>Serviços</strong><small id="serviceSummary">Itens e valores dos serviços</small></span><span class="accordion-chevron">⌄</span></summary><div class="accordion-body"><div class="section-toolbar"><span class="hint">Adicione e revise os serviços do orçamento.</span><button id="addService" class="btn primary">＋ Adicionar serviço</button></div>
+<div class="thead service-grid"><span>Qtd.</span><span>Serviço</span><span>Unitário</span><span>Total</span><span></span></div><div id="services"></div></div></details>
 
-<section class="card"><div class="head"><div><h2>4. Materiais</h2><p class="hint">Sugestões podem ser editadas, removidas ou complementadas.</p></div><button id="addMaterial" class="btn primary">+ Adicionar</button></div>
-<div class="thead material-grid"><span>Qtd.</span><span>Material</span><span>Unitário</span><span>Fornecimento</span><span>Total</span><span></span></div><div id="materials"></div></section>
+<details class="card accordion-card" data-accordion="materials"><summary class="accordion-summary"><span class="accordion-number">4</span><span class="accordion-heading"><strong>Materiais</strong><small id="materialSummary">Itens, especificações e fornecimento</small></span><span class="accordion-chevron">⌄</span></summary><div class="accordion-body"><div class="section-toolbar"><span class="hint">Sugestões podem ser editadas, removidas ou complementadas.</span><button id="addMaterial" class="btn primary">＋ Adicionar material</button></div>
+<div class="thead material-grid"><span>Qtd.</span><span>Material</span><span>Unitário</span><span>Fornecimento</span><span>Total</span><span></span></div><div id="materials"></div></div></details>
 
-<section class="card"><div class="head"><h2>5. Resumo</h2><label class="status-field">Status<select id="quoteStatus"><option>Em análise</option><option>Enviado</option><option>Aprovado</option><option>Em execução</option><option>Concluído</option><option>Recusado</option><option>Cancelado</option></select></label></div><div class="totals">
+<details class="card accordion-card" data-accordion="summary"><summary class="accordion-summary"><span class="accordion-number">5</span><span class="accordion-heading"><strong>Resumo</strong><small>Descontos, status e total do orçamento</small></span><span class="accordion-chevron">⌄</span></summary><div class="accordion-body"><div class="head"><h2>Resumo financeiro</h2><label class="status-field">Status<select id="quoteStatus"><option>Em análise</option><option>Enviado</option><option>Aprovado</option><option>Em execução</option><option>Concluído</option><option>Recusado</option><option>Cancelado</option></select></label></div><div class="totals">
 <div><span>Serviços</span><b id="serviceTotal">R$ 0,00</b></div><div><span>Materiais</span><b id="materialTotal">R$ 0,00</b></div>
 <label>Desconto<input id="discount" type="number" min="0" step=".01" value="0"></label>
-<div class="grand"><span>Total</span><b id="grandTotal">R$ 0,00</b></div></div></section>
+<div class="grand"><span>Total</span><b id="grandTotal">R$ 0,00</b></div></div></div></details>
 
-<section class="card"><div class="head"><div><h2>6. Fotos do serviço</h2><p class="hint">Anexe fotos do local, instalação ou projeto. Elas ficam vinculadas a este orçamento.</p></div><label class="photo-add btn primary" for="photoInput">📷 Adicionar fotos</label><input id="photoInput" type="file" accept="image/*" capture="environment" multiple hidden></div><div id="photoGallery" class="photo-gallery"></div><p id="photoStatus" class="hint"></p></section>
+<details class="card accordion-card" data-accordion="photos"><summary class="accordion-summary"><span class="accordion-number">6</span><span class="accordion-heading"><strong>Fotos do serviço</strong><small>Anexe imagens do local, instalação ou projeto</small></span><span class="accordion-chevron">⌄</span></summary><div class="accordion-body"><div class="section-toolbar"><span class="hint">As fotos ficam vinculadas a este orçamento.</span><label class="photo-add btn primary" for="photoInput">📷 Adicionar fotos</label><input id="photoInput" type="file" accept="image/*" capture="environment" multiple hidden></div><div id="photoGallery" class="photo-gallery"></div><p id="photoStatus" class="hint"></p></div></details>
 
-<section class="card"><h2>7. Condições comerciais</h2><textarea id="conditions" rows="4">Orçamento válido por 7 dias.
+<details class="card accordion-card" data-accordion="conditions"><summary class="accordion-summary"><span class="accordion-number">7</span><span class="accordion-heading"><strong>Condições comerciais</strong><small>Validade, garantia e formas de pagamento</small></span><span class="accordion-chevron">⌄</span></summary><div class="accordion-body"><textarea id="conditions" rows="4">Orçamento válido por 7 dias.
 Garantia de mão de obra: 90 dias.
-Pagamento: Pix, cartão ou dinheiro.</textarea></section>
+Pagamento: Pix, cartão ou dinheiro.</textarea></div></details>
 <div class="actions"><button id="saveBtn" class="btn ghost">Salvar orçamento</button><button id="pdfBtn" class="btn primary">Gerar PDF</button><button id="whatsBtn" class="btn whatsapp">WhatsApp</button></div>
 </section>
 
@@ -144,9 +144,9 @@ Pagamento: Pix, cartão ou dinheiro.</textarea></section>
 </main>
 </div>
 
-<template id="serviceTpl"><div class="row service-grid"><input class="qty" type="number" min="0" value="1"><div class="desc-wrap"><input class="desc" placeholder="Descrição do serviço"><small class="source"></small></div><input class="unit" type="number" min="0" step=".01" value="0"><b class="line">R$ 0,00</b><button class="remove">×</button></div></template>
-<template id="materialTpl"><div class="row material-grid"><input class="qty" type="number" min="0" step=".01" value="1"><div class="desc-wrap"><input class="desc" placeholder="Material / especificação"><small class="source"></small></div><input class="unit" type="number" min="0" step=".01" value="0"><select class="supply"><option>RHGonçalves</option><option>Cliente</option><option>Sem preço</option></select><b class="line">R$ 0,00</b><button class="remove">×</button></div></template>
-<script src="app.js?v=20-ui1"></script>
+<template id="serviceTpl"><div class="row service-grid item-card"><div class="desc-wrap item-description"><label>Descrição do serviço<input class="desc" placeholder="Ex.: instalação de ponto elétrico"><small class="source"></small></label></div><label class="item-field">Quantidade<input class="qty" type="number" min="0" value="1"></label><label class="item-field">Valor unitário (R$)<input class="unit" type="number" min="0" step=".01" value="0"></label><div class="item-total"><span>Subtotal</span><b class="line">R$ 0,00</b></div><button class="remove" type="button" aria-label="Remover serviço">Remover ×</button></div></template>
+<template id="materialTpl"><div class="row material-grid item-card"><div class="desc-wrap item-description"><label>Material / especificação<input class="desc" placeholder="Ex.: cabo flexível 750V – 2,5 mm²"><small class="source"></small></label></div><label class="item-field">Quantidade<input class="qty" type="number" min="0" step=".01" value="1"></label><label class="item-field">Valor unitário (R$)<input class="unit" type="number" min="0" step=".01" value="0"></label><label class="item-field supply-field">Fornecimento<select class="supply"><option>RHGonçalves</option><option>Cliente</option><option>Sem preço</option></select></label><div class="item-total"><span>Subtotal</span><b class="line">R$ 0,00</b></div><button class="remove" type="button" aria-label="Remover material">Remover ×</button></div></template>
+<script src="app.js?v=20-ui2"></script>
 
 <script>
 (function () {

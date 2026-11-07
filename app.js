@@ -199,7 +199,7 @@ function calc(){
  let st=0,mt=0;
  $$('.service-grid.row').forEach(r=>{let v=(+r.querySelector('.qty').value||0)*(+r.querySelector('.unit').value||0);st+=v;r.querySelector('.line').textContent=money(v)});
  $$('.material-grid.row').forEach(r=>{let b=(+r.querySelector('.qty').value||0)*(+r.querySelector('.unit').value||0),v=r.querySelector('.supply').value==='RHGonçalves'?b:0;mt+=v;r.querySelector('.line').textContent=money(v)});
- let d=+$('#discount').value||0,t=Math.max(0,st+mt-d);$('#serviceTotal').textContent=money(st);$('#materialTotal').textContent=money(mt);$('#grandTotal').textContent=money(t);
+ let d=+$('#discount').value||0,t=Math.max(0,st+mt-d);$('#serviceTotal').textContent=money(st);$('#materialTotal').textContent=money(mt);$('#grandTotal').textContent=money(t);const sc=$$('.service-grid.row').filter(r=>r.querySelector('.desc')?.value.trim()).length;const mc=$$('.material-grid.row').filter(r=>r.querySelector('.desc')?.value.trim()).length;const ss=$('#serviceSummary'),ms=$('#materialSummary');if(ss)ss.textContent=sc?`${sc} serviço(s) · ${money(st)}`:'Nenhum serviço adicionado';if(ms)ms.textContent=mc?`${mc} material(is) · ${money(mt)}`:'Nenhum material adicionado';
 }
 function collect(){
  const existing=JSON.parse(localStorage.getItem(draftKey)||'null');

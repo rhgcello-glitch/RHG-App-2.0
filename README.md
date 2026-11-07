@@ -1,5 +1,3 @@
-# RHG-App 2.0 — Ambiente de desenvolvimento
+# RHG App 2.0 — UI 2
 
-Consulte `README-v2.0.md` para a base funcional e `README-v2.0-ui1.md` para as alterações da primeira entrega visual.
-
-Esta cópia não substitui a versão estável 1.9.
+Consulte `README-v2.0-ui2.md` para alterações, limites desta entrega e roteiro de testes.
