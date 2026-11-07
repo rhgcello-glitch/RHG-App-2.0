@@ -2,8 +2,8 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#17324d"><link rel="manifest" href="manifest.json">
-<title>RHGonçalves | Gestão de Orçamentos</title><link rel="stylesheet" href="styles.css">
+<meta name="theme-color" content="#111111"><link rel="manifest" href="manifest.json">
+<title>RHGonçalves | Gestão de Orçamentos</title><link rel="stylesheet" href="styles.css?v=20-ui1">
 </head>
 <body>
 <header class="app-header">
@@ -14,14 +14,28 @@
   <span class="app-version">RHG-App · V2.0 (em desenvolvimento)</span>
 </header>
 
-<nav class="app-nav">
-<button data-page="quote" class="nav active">Novo orçamento</button>
-<button data-page="history" class="nav">Histórico</button>
-<button data-page="assistant" class="nav">💬 Assistente RHG-Bot</button>
-<button data-page="database" class="nav">🗂️ Base RHG</button>
+<div class="app-shell">
+<nav class="app-nav" aria-label="Navegação principal">
+  <div class="nav-caption">MENU PRINCIPAL</div>
+  <button data-page="dashboard" class="nav active"><span>⌂</span> Início</button>
+  <button data-page="quote" class="nav"><span>＋</span> Novo orçamento</button>
+  <button data-page="history" class="nav"><span>▤</span> Orçamentos</button>
+  <button data-page="assistant" class="nav"><span>✦</span> Assistente RHG-Bot</button>
+  <button data-page="database" class="nav"><span>▦</span> Base RHG</button>
+  <div class="nav-foot">RHG-App · V2.0</div>
 </nav>
 <main class="app-main">
-<section id="quote" class="page">
+<section id="dashboard" class="page dashboard">
+  <div class="welcome"><p class="eyebrow">PAINEL DE GESTÃO</p><h1>Olá! Bem-vindo à RHG.</h1><p>O que você deseja fazer hoje?</p></div>
+  <div class="dashboard-grid">
+    <button class="dashboard-card featured" data-page="quote"><span class="dash-icon">＋</span><strong>Novo orçamento</strong><small>Comece uma nova proposta</small></button>
+    <button class="dashboard-card assistant-card" data-page="assistant"><span class="dash-icon">✦</span><strong>Assistente RHG-Bot</strong><small>Orientação comercial e mensagens</small></button>
+    <button class="dashboard-card" data-page="history"><span class="dash-icon">▤</span><strong>Orçamentos</strong><small>Histórico e acompanhamento</small></button>
+    <button class="dashboard-card" data-page="database"><span class="dash-icon">▦</span><strong>Base RHG</strong><small>Materiais, serviços e clientes</small></button>
+  </div>
+  <div class="dashboard-note"><span>⚡</span><div><strong>Ferramentas RHG integradas</strong><p>Criação inteligente, interpretação com IA e gestão da sua base de dados em um só lugar.</p></div></div>
+</section>
+<section id="quote" class="page hidden">
 <div class="title"><div><h1>Novo orçamento</h1><p id="quoteNumberLabel" class="quote-number">Ainda não salvo</p><p>Descreva, revise, calcule e finalize.</p></div><button id="newBtn" class="btn ghost">Novo</button></div>
 
 <section class="card"><h2>1. Cliente</h2><div class="grid">
@@ -128,10 +142,11 @@ Pagamento: Pix, cartão ou dinheiro.</textarea></section>
 <div id="assistantResult" class="result hidden"><h3>Orientação</h3><p id="advice"></p><h3>Mensagem sugerida</h3><div id="message" class="message"></div><button id="copyBtn" class="btn ghost">Copiar mensagem</button></div>
 </section></section>
 </main>
+</div>
 
 <template id="serviceTpl"><div class="row service-grid"><input class="qty" type="number" min="0" value="1"><div class="desc-wrap"><input class="desc" placeholder="Descrição do serviço"><small class="source"></small></div><input class="unit" type="number" min="0" step=".01" value="0"><b class="line">R$ 0,00</b><button class="remove">×</button></div></template>
 <template id="materialTpl"><div class="row material-grid"><input class="qty" type="number" min="0" step=".01" value="1"><div class="desc-wrap"><input class="desc" placeholder="Material / especificação"><small class="source"></small></div><input class="unit" type="number" min="0" step=".01" value="0"><select class="supply"><option>RHGonçalves</option><option>Cliente</option><option>Sem preço</option></select><b class="line">R$ 0,00</b><button class="remove">×</button></div></template>
-<script src="app.js?v=20"></script>
+<script src="app.js?v=20-ui1"></script>
 
 <script>
 (function () {

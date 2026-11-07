@@ -1,7 +1,5 @@
-# RHG-App 2.0 — Desenvolvimento
+# RHG-App 2.0 — Ambiente de desenvolvimento
 
-**Fase atual:** Fase 1 — busca inteligente e cadastro inicial de materiais/serviços.
+Consulte `README-v2.0.md` para a base funcional e `README-v2.0-ui1.md` para as alterações da primeira entrega visual.
 
-Leia `README-v2.0.md` para instruções de configuração do Google Apps Script, Render, testes e limites desta entrega.
-
-Esta cópia não substitui a RHG-App 1.9 estável.
+Esta cópia não substitui a versão estável 1.9.

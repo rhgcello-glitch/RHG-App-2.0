@@ -288,8 +288,8 @@ window.openHistory=async id=>{
   loadDraft();showPage('quote');
 };
 
-function showPage(id){$$('.page').forEach(p=>p.classList.toggle('hidden',p.id!==id));$$('.nav').forEach(b=>b.classList.toggle('active',b.dataset.page===id));if(id==='history')renderHistory()}
-$$('.nav').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
+function showPage(id){$$('.page').forEach(p=>p.classList.toggle('hidden',p.id!==id));$$('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===id));if(id==='history')renderHistory()}
+$$('[data-page]').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
 $('#addService').onclick=()=>addRow('service');$('#addMaterial').onclick=()=>addRow('material');$('#discount').oninput=calc;$('#saveBtn').onclick=()=>saveDraft();
 $('#newBtn').onclick=async()=>{if(confirm('Começar um novo orçamento?'))await clearAll()};
 loadSharedHistory();
