@@ -63,3 +63,81 @@
   .item-card .item-total{grid-column:auto;border-top:0;padding-top:0}
   .item-card .remove{grid-column:auto}
 }
+
+/* UI3 — correção de layout mobile e camada do autocomplete */
+@media (max-width: 900px) {
+  .accordion-card { overflow: visible !important; }
+  .accordion-card[open] { position: relative; z-index: 80; }
+  .accordion-card:not([open]) { position: relative; z-index: 0; }
+
+  .item-card,
+  .service-grid.row.item-card,
+  .material-grid.row.item-card {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    align-items: end;
+    gap: 12px !important;
+    width: 100%;
+    min-width: 0;
+    padding: 14px !important;
+  }
+  .item-card .item-description {
+    grid-column: 1 / -1 !important;
+    width: 100%;
+    min-width: 0;
+  }
+  .item-card .item-description label,
+  .item-card .item-field {
+    width: 100%;
+    min-width: 0;
+  }
+  .item-card .item-description .desc {
+    width: 100%;
+    min-width: 0;
+    min-height: 50px;
+    overflow-wrap: anywhere;
+  }
+  .item-card .item-field { grid-column: auto !important; }
+  .item-card .supply-field { grid-column: 1 / -1 !important; }
+  .item-card .item-total {
+    grid-column: 1 / -1 !important;
+    width: 100%;
+    min-width: 0;
+    padding-top: 12px;
+  }
+  .item-card .item-total b {
+    white-space: nowrap;
+    font-size: clamp(17px, 5vw, 21px);
+  }
+  .item-card .remove {
+    grid-column: 1 / -1 !important;
+    width: 100%;
+    min-height: 44px;
+  }
+  .item-card input,
+  .item-card select { width: 100%; min-width: 0; }
+
+  .desc-wrap { z-index: 2; }
+  .rhg-autocomplete {
+    z-index: 99999;
+    max-height: min(42vh, 320px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+    min-width: 0;
+  }
+  .rhg-autocomplete-option,
+  .rhg-autocomplete-add {
+    min-height: 48px;
+    padding: 11px 12px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 390px) {
+  .accordion-body { padding: 10px; }
+  .item-card { padding: 11px !important; gap: 10px !important; }
+  .item-card label { font-size: 12px; line-height: 1.3; }
+}

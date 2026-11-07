@@ -1,3 +1,3 @@
-# RHG App 2.0 — UI 2
+# RHG App 2.0
 
-Consulte `README-v2.0-ui2.md` para alterações, limites desta entrega e roteiro de testes.
+Pacote de desenvolvimento UI 3. Consulte `README-v2.0-ui3.md` para alterações e instruções de teste.
