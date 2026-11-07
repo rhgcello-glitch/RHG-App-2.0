@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: rhg-app-web
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: RHG_SHEETS_URL
+        sync: false
+      - key: RHG_SHEETS_API_KEY
+        sync: false
+      - key: RHG_AI_API_KEY
+        sync: false
+      - key: RHG_AI_MODEL
+        sync: false
+      - key: RHG_AI_URL
+        sync: false
+      - key: RHG_BOT_ENDPOINT
+        sync: false

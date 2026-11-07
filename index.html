@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#17324d"><link rel="manifest" href="manifest.json">
+<title>RHGonçalves | Gestão de Orçamentos</title><link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="app-header">
+  <div class="brand">
+    <div class="brand-mark">⚡</div>
+    <div><strong>RHGonçalves</strong><small>Serviços Elétricos</small></div>
+  </div>
+  <span class="app-version">RHG-App · V2.0 (em desenvolvimento)</span>
+</header>
+
+<nav class="app-nav">
+<button data-page="quote" class="nav active">Novo orçamento</button>
+<button data-page="history" class="nav">Histórico</button>
+<button data-page="assistant" class="nav">💬 Assistente RHG-Bot</button>
+<button data-page="database" class="nav">🗂️ Base RHG</button>
+</nav>
+<main class="app-main">
+<section id="quote" class="page">
+<div class="title"><div><h1>Novo orçamento</h1><p id="quoteNumberLabel" class="quote-number">Ainda não salvo</p><p>Descreva, revise, calcule e finalize.</p></div><button id="newBtn" class="btn ghost">Novo</button></div>
+
+<section class="card"><h2>1. Cliente</h2><div class="grid">
+<label>Nome<input id="clientName"></label><label>Telefone<input id="clientPhone"></label>
+<label>Tipo<select id="clientType"><option>Residencial</option><option>Comercial</option></select></label>
+<label>Perfil<select id="clientProfile"><option>Comum</option><option>Baixa</option><option>Alta</option><option>Alto padrão</option><option>Comercial</option></select></label>
+<label class="full">Endereço<input id="clientAddress"></label>
+</div></section>
+
+<section class="card"><h2>2. Informações para o RHG-Bot</h2>
+<p class="hint">Descreva o pedido do cliente em linguagem natural. A descrição profissional do PDF será gerada automaticamente a partir dos serviços e materiais finais.</p>
+<textarea id="serviceDescription" rows="5" placeholder="Ex.: instalação de 5 pontos de iluminação no jardim, ao longo de 5 metros, criando a infraestrutura elétrica."></textarea>
+<div class="bar"><button id="interpretBtn" class="btn primary">🔍 Interpretar com RHG-Bot</button><span id="interpretStatus" class="hint">A integração real será conectada ao agente.</span></div>
+</section>
+
+<section class="card"><div class="head"><h2>3. Serviços</h2><button id="addService" class="btn primary">+ Adicionar</button></div>
+<div class="thead service-grid"><span>Qtd.</span><span>Serviço</span><span>Unitário</span><span>Total</span><span></span></div><div id="services"></div></section>
+
+<section class="card"><div class="head"><div><h2>4. Materiais</h2><p class="hint">Sugestões podem ser editadas, removidas ou complementadas.</p></div><button id="addMaterial" class="btn primary">+ Adicionar</button></div>
+<div class="thead material-grid"><span>Qtd.</span><span>Material</span><span>Unitário</span><span>Fornecimento</span><span>Total</span><span></span></div><div id="materials"></div></section>
+
+<section class="card"><div class="head"><h2>5. Resumo</h2><label class="status-field">Status<select id="quoteStatus"><option>Em análise</option><option>Enviado</option><option>Aprovado</option><option>Em execução</option><option>Concluído</option><option>Recusado</option><option>Cancelado</option></select></label></div><div class="totals">
+<div><span>Serviços</span><b id="serviceTotal">R$ 0,00</b></div><div><span>Materiais</span><b id="materialTotal">R$ 0,00</b></div>
+<label>Desconto<input id="discount" type="number" min="0" step=".01" value="0"></label>
+<div class="grand"><span>Total</span><b id="grandTotal">R$ 0,00</b></div></div></section>
+
+<section class="card"><div class="head"><div><h2>6. Fotos do serviço</h2><p class="hint">Anexe fotos do local, instalação ou projeto. Elas ficam vinculadas a este orçamento.</p></div><label class="photo-add btn primary" for="photoInput">📷 Adicionar fotos</label><input id="photoInput" type="file" accept="image/*" capture="environment" multiple hidden></div><div id="photoGallery" class="photo-gallery"></div><p id="photoStatus" class="hint"></p></section>
+
+<section class="card"><h2>7. Condições comerciais</h2><textarea id="conditions" rows="4">Orçamento válido por 7 dias.
+Garantia de mão de obra: 90 dias.
+Pagamento: Pix, cartão ou dinheiro.</textarea></section>
+<div class="actions"><button id="saveBtn" class="btn ghost">Salvar orçamento</button><button id="pdfBtn" class="btn primary">Gerar PDF</button><button id="whatsBtn" class="btn whatsapp">WhatsApp</button></div>
+</section>
+
+<section id="history" class="page hidden"><div class="title"><div><h1>Histórico de orçamentos</h1><p>Pesquise e acompanhe os orçamentos salvos neste dispositivo.</p></div></div>
+<div class="card"><div class="search"><input id="historySearch" placeholder="Buscar por cliente, serviço ou número"><select id="historyStatus"><option value="">Todos</option><option>Em análise</option><option>Enviado</option><option>Aprovado</option><option>Em execução</option><option>Concluído</option><option>Recusado</option><option>Cancelado</option></select></div><div id="historyList"></div></div></section>
+<section id="database" class="page hidden">
+
+<div class="title">
+  <div>
+    <h1>🗂️ Base RHG</h1>
+    <p>Consulte e mantenha os dados utilizados pelo RHGonçalves.</p>
+  </div>
+</div>
+
+<section class="card">
+
+  <div class="db-tabs">
+
+    <button class="db-tab active" data-db="MATERIAIS">
+      📦 Materiais
+    </button>
+
+    <button class="db-tab" data-db="SERVIÇOS">
+      🔧 Serviços
+    </button>
+
+    <button class="db-tab" data-db="FORNECEDORES">
+      🏪 Fornecedores
+    </button>
+
+    <button class="db-tab" data-db="CLIENTES">
+      👤 Clientes
+    </button>
+
+  </div>
+
+  <div class="db-toolbar">
+
+    <input
+      id="dbSearch"
+      type="search"
+      placeholder="Pesquisar..."
+    >
+
+    <button id="dbRefresh" class="btn ghost">
+      ↻ Atualizar
+    </button>
+
+    <button id="dbAdd" class="btn primary">
+      + Adicionar
+    </button>
+
+  </div>
+
+  <div id="dbStatus" class="hint"></div>
+
+  <div id="dbContent"></div>
+
+
+</section>
+
+</section>
+<section id="assistant" class="page hidden"><div class="title"><div><h1>💬 Assistente RHG-Bot</h1><p>Orientação comercial e mensagens para clientes.</p></div></div>
+<section class="card"><div class="chips">
+<button data-q="O cliente não respondeu ao orçamento.">📩 Não respondeu</button>
+<button data-q="O cliente pediu um desconto.">💰 Pediu desconto</button>
+<button data-q="Preciso solicitar um adiantamento.">💵 Solicitar adiantamento</button>
+<button data-q="Preciso confirmar o agendamento.">📅 Confirmar agendamento</button>
+<button data-q="Preciso fazer um follow-up do orçamento.">🔄 Follow-up</button>
+<button data-q="O cliente recusou o orçamento.">❌ Recusou</button>
+</div><textarea id="assistantInput" rows="5" placeholder="Descreva a situação..."></textarea>
+<div class="bar"><button id="assistantBtn" class="btn primary">Consultar RHG-Bot</button><span id="assistantStatus" class="hint"></span></div>
+<div id="assistantResult" class="result hidden"><h3>Orientação</h3><p id="advice"></p><h3>Mensagem sugerida</h3><div id="message" class="message"></div><button id="copyBtn" class="btn ghost">Copiar mensagem</button></div>
+</section></section>
+</main>
+
+<template id="serviceTpl"><div class="row service-grid"><input class="qty" type="number" min="0" value="1"><div class="desc-wrap"><input class="desc" placeholder="Descrição do serviço"><small class="source"></small></div><input class="unit" type="number" min="0" step=".01" value="0"><b class="line">R$ 0,00</b><button class="remove">×</button></div></template>
+<template id="materialTpl"><div class="row material-grid"><input class="qty" type="number" min="0" step=".01" value="1"><div class="desc-wrap"><input class="desc" placeholder="Material / especificação"><small class="source"></small></div><input class="unit" type="number" min="0" step=".01" value="0"><select class="supply"><option>RHGonçalves</option><option>Cliente</option><option>Sem preço</option></select><b class="line">R$ 0,00</b><button class="remove">×</button></div></template>
+<script src="app.js?v=20"></script>
+
+<script>
+(function () {
+  function formatPhone(value) {
+    let v = String(value || '').replace(/\D/g, '').slice(0, 11);
+    if (v.length <= 2) return v ? '(' + v : '';
+    if (v.length <= 6) return '(' + v.slice(0,2) + ') ' + v.slice(2);
+    if (v.length <= 10) return '(' + v.slice(0,2) + ') ' + v.slice(2,6) + '-' + v.slice(6);
+    return '(' + v.slice(0,2) + ') ' + v.slice(2,7) + '-' + v.slice(7);
+  }
+  function attachPhoneMask() {
+    const candidates = Array.from(document.querySelectorAll('input')).filter(el => {
+      const s = [
+        el.id, el.name, el.placeholder, el.getAttribute('aria-label')
+      ].join(' ').toLowerCase();
+      return /telefone|phone|celular|whatsapp/.test(s);
+    });
+    candidates.forEach(input => {
+      if (input.dataset.rhgPhoneMaskAttached === '1') return;
+      input.dataset.rhgPhoneMaskAttached = '1';
+      input.inputMode = 'numeric';
+      input.maxLength = 15;
+      input.autocomplete = 'tel';
+      input.addEventListener('input', function () {
+        const start = this.selectionStart;
+        const before = this.value;
+        this.value = formatPhone(this.value);
+        if (document.activeElement === this) {
+          const delta = this.value.length - before.length;
+          const pos = Math.max(0, Math.min(this.value.length, start + delta));
+          this.setSelectionRange(pos, pos);
+        }
+      });
+    });
+  }
+  document.addEventListener('DOMContentLoaded', attachPhoneMask);
+  new MutationObserver(attachPhoneMask).observe(document.documentElement, {childList:true, subtree:true});
+})();
+</script>
+
+
+<script>
+(function () {
+  function maskPhone(value) {
+    const v = String(value || '').replace(/\D/g, '').slice(0, 11);
+    if (v.length <= 2) return v ? '(' + v : '';
+    if (v.length <= 6) return '(' + v.slice(0, 2) + ') ' + v.slice(2);
+    if (v.length <= 10) return '(' + v.slice(0, 2) + ') ' + v.slice(2, 6) + '-' + v.slice(6);
+    return '(' + v.slice(0, 2) + ') ' + v.slice(2, 7) + '-' + v.slice(7);
+  }
+  function bind() {
+    document.querySelectorAll('input[data-phone-mask="true"], input').forEach(input => {
+      const descriptor = [input.id, input.name, input.placeholder, input.getAttribute('aria-label')].join(' ').toLowerCase();
+      if (input.dataset.rhgPhoneMask === '1') return;
+      if (input.dataset.phoneMask === 'true' || /telefone|phone|celular|whatsapp/.test(descriptor)) {
+        input.dataset.rhgPhoneMask = '1';
+        input.inputMode = 'numeric';
+        input.maxLength = 15;
+        input.autocomplete = 'tel';
+        input.addEventListener('input', () => {
+          input.value = maskPhone(input.value);
+        });
+        if (input.value) input.value = maskPhone(input.value);
+      }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', bind);
+  new MutationObserver(bind).observe(document.documentElement, {childList:true, subtree:true});
+})();
+</script>
+
+</body></html>

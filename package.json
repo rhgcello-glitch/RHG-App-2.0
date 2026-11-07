@@ -1,0 +1,12 @@
+{
+  "name": "rhg-webapp",
+  "version": "2.0.0",
+  "private": true,
+  "description": "RHGonçalves Web App 2.0 - busca inteligente e gestão da Base RHG",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7"
+  }
+}
