@@ -104,14 +104,40 @@ async function writeRHGSheets(sheet, action, data = {}, row = null) {
   return result;
 }
 async function callRHGPhotoAction(action, payload = {}) {
-  if (!RHG_SHEETS_URL) throw new Error("RHG_SHEETS_URL não configurada.");
+  if (!RHG_SHEETS_URL) {
+    throw new Error("RHG_SHEETS_URL não configurada.");
+  }
+
   const response = await fetch(RHG_SHEETS_URL, {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: `photo_${action}`, ...payload, apiKey: RHG_SHEETS_API_KEY })
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      ...payload,
+      action: `photo_${action}`,
+      apiKey: RHG_SHEETS_API_KEY
+    })
   });
+
   const text = await response.text();
-  let data; try { data = JSON.parse(text); } catch { throw new Error("Resposta inválida do Google Apps Script ao acessar fotos."); }
-  if (!response.ok || data.ok === false) throw new Error(data.error || `Google Apps Script retornou HTTP ${response.status}`);
+
+  let data;
+
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error(
+      "Resposta inválida do Google Apps Script ao acessar fotos."
+    );
+  }
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(
+      data.error || `Google Apps Script retornou HTTP ${response.status}`
+    );
+  }
+
   return data;
 }
 function readJsonRequest(req, limit = 12 * 1024 * 1024) {
