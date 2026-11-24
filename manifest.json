@@ -1,7 +1,7 @@
 {
   "name": "RHGonçalves | Gestão de Orçamentos",
   "short_name": "RHG-App",
-  "description": "RHG-App para criação e gestão de orçamentos da RHGonçalves Serviços Elétricos.",
+  "description": "RHG-App para criação, gestão de orçamentos e consultoria do RHG-Bot.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

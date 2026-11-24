@@ -13,7 +13,7 @@ function normalizeQuoteFromServer(q){
     date:q.date||new Date().toISOString(),
     updatedAt:q.updatedAt||q.date||new Date().toISOString(),
     status:q.status||DEFAULT_STATUS,
-    client:{name:'',phone:'',type:'Residencial',profile:'Comum',address:'',...(q.client||{})},
+    client:{name:'',phone:'',type:'Residencial',profile:'',address:'',...(q.client||{})},
     services:Array.isArray(q.services)?q.services:[],
     materials:Array.isArray(q.materials)?q.materials:[],
     discount:Number(q.discount||0),
@@ -235,7 +235,7 @@ async function saveOfficialQuote(){
 
 function loadDraft(providedDraft){
  const d=providedDraft||JSON.parse(localStorage.getItem(draftKey)||'null');if(!d){$('#quoteNumberLabel').textContent='Ainda não salvo';renderPhotos(null);return;}
- $('#quoteNumberLabel').textContent=d.quoteNumber?`Orçamento ${d.quoteNumber}`:'Ainda não salvo';$('#clientName').value=d.client.name||'';$('#clientPhone').value=d.client.phone||'';$('#clientType').value=d.client.type||'Residencial';$('#clientProfile').value=d.client.profile||'Comum';$('#clientAddress').value=d.client.address||'';$('#serviceDescription').value=d.description||'';$('#quoteStatus').value=d.status||DEFAULT_STATUS;$('#discount').value=d.discount||0;$('#conditions').value=d.conditions||$('#conditions').value;
+ $('#quoteNumberLabel').textContent=d.quoteNumber?`Orçamento ${d.quoteNumber}`:'Ainda não salvo';$('#clientName').value=d.client.name||'';$('#clientPhone').value=d.client.phone||'';$('#clientType').value=d.client.type||'Residencial';$('#clientProfile').value=d.client.profile||'';$('#clientAddress').value=d.client.address||'';$('#serviceDescription').value=d.description||'';$('#quoteStatus').value=d.status||DEFAULT_STATUS;$('#discount').value=d.discount||0;$('#conditions').value=d.conditions||$('#conditions').value;
  services.innerHTML='';materials.innerHTML='';(d.services||[]).forEach(x=>addRow('service',x));(d.materials||[]).forEach(x=>addRow('material',x));calc();renderPhotos(d.id);
 }
 function showSavedToast(number){
@@ -822,26 +822,177 @@ $('#pdfBtn').onclick=async()=>{
 };
 $('#whatsBtn').onclick=()=>{let d=collect(),t=`Olá, ${d.client.name||'cliente'}! Segue o resumo da proposta ${d.quoteNumber?`Orçamento ${d.quoteNumber}`:'da RHGonçalves Serviços Elétricos'}.\n\nSERVIÇOS\n`;d.services.filter(x=>x.desc).forEach(x=>t+=`• ${x.qty}x ${x.desc} — ${money(x.unit)} cada\n`);t+=`Total de serviços: ${$('#serviceTotal').textContent}\n\nMATERIAIS\n`;d.materials.filter(x=>x.desc).forEach(x=>{t+=`• ${x.qty}x ${x.desc}`;t+=x.supply==='Sem preço'?' — sem preço':x.supply==='Cliente'?' — fornecido pelo cliente':` — ${money(x.unit)} cada`;t+='\n'});t+=`Total de materiais: ${$('#materialTotal').textContent}\n`;if(d.discount)t+=`Desconto: ${money(d.discount)}\n`;t+=`Total do orçamento: ${$('#grandTotal').textContent}`;window.open('https://wa.me/?text='+encodeURIComponent(t),'_blank')};
 
-$$('.chips button').forEach(b=>b.onclick=()=>$('#assistantInput').value=b.dataset.q);
+// RHG-Bot 2.1 — conversa contínua, anexos e aprovação de atualizações
+const assistantThread = $('#assistantThread');
+let assistantMessages = [];
+let assistantPendingFiles = [];
+let assistantReplyTo = null;
+let assistantLastProposals = [];
+
+function assistantText(tag, className, value) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  node.textContent = value || '';
+  return node;
+}
+function assistantSetStatus(value, error=false) {
+  const node = $('#assistantStatus');
+  node.textContent = value || '';
+  node.classList.toggle('assistant-status-error', !!error);
+}
+function assistantRenderAttachments() {
+  const host = $('#assistantAttachments');
+  host.replaceChildren();
+  assistantPendingFiles.forEach((file, index) => {
+    const pill = document.createElement('span');
+    pill.className = 'assistant-attachment-pill';
+    pill.append(assistantText('span','',`📎 ${file.name}`));
+    const remove = assistantText('button','assistant-attachment-remove','×');
+    remove.type = 'button'; remove.setAttribute('aria-label',`Remover ${file.name}`);
+    remove.onclick = () => { assistantPendingFiles.splice(index,1); assistantRenderAttachments(); };
+    pill.append(remove); host.append(pill);
+  });
+}
+function assistantRenderThread() {
+  assistantThread.replaceChildren();
+  if (!assistantMessages.length) {
+    const empty = document.createElement('div'); empty.className='assistant-empty';
+    empty.append(assistantText('span','','✦'), assistantText('strong','','RHG-Bot pronto para ajudar'), assistantText('p','','As perguntas e respostas ficarão organizadas nesta conversa. Você poderá responder a qualquer resposta para aprofundar a análise.'));
+    assistantThread.append(empty); return;
+  }
+  assistantMessages.forEach((item,index) => {
+    const article = document.createElement('article');
+    article.className = `assistant-message ${item.role==='user'?'assistant-message-user':'assistant-message-bot'}`;
+    const top = document.createElement('div'); top.className='assistant-message-top';
+    top.append(assistantText('strong','',item.role==='user'?'Você':'✦ RHG-Bot'));
+    if(item.files?.length) top.append(assistantText('small','',`📎 ${item.files.join(', ')}`));
+    article.append(top);
+    if(item.role==='user') article.append(assistantText('p','assistant-message-text',item.text));
+    else {
+      if(item.advice) article.append(assistantText('p','assistant-message-text',item.advice));
+      if(item.message) {
+        const msg = document.createElement('div'); msg.className='assistant-suggested-message';
+        msg.append(assistantText('strong','','Mensagem sugerida ao cliente'),assistantText('p','',item.message));
+        const copy = assistantText('button','btn ghost','Copiar mensagem'); copy.type='button';
+        copy.onclick=async()=>{try{await navigator.clipboard.writeText(item.message);copy.textContent='Copiado!';setTimeout(()=>copy.textContent='Copiar mensagem',1200)}catch(e){assistantSetStatus('Não foi possível copiar a mensagem.',true)}};
+        msg.append(copy); article.append(msg);
+      }
+      if(item.documentSummary) article.append(assistantText('div','assistant-document-summary',item.documentSummary));
+      if(Array.isArray(item.suggestedUpdates) && item.suggestedUpdates.length) {
+        const box = document.createElement('div'); box.className='assistant-proposal-box';
+        box.append(assistantText('strong','','Propostas de atualização da Base RHG'));
+        box.append(assistantText('p','assistant-proposal-hint','Revise os itens e marque somente as alterações que deseja aprovar. Nenhuma mudança foi aplicada ainda.'));
+        item.suggestedUpdates.forEach((proposal,proposalIndex)=>{
+          const label=document.createElement('label'); label.className='assistant-proposal-item';
+          const checkbox=document.createElement('input'); checkbox.type='checkbox'; checkbox.checked=true; checkbox.dataset.proposalIndex=String(proposalIndex);
+          checkbox.disabled=!!proposal.approved;
+          const body=document.createElement('span'); body.className='assistant-proposal-detail';
+          const title=proposal.name||proposal.itemName||proposal.material||proposal.service||'Item sem identificação';
+          const operation=proposal.operation==='insert'?'Novo cadastro':'Atualização de preço';
+          body.append(assistantText('strong','',`${operation}: ${title}`));
+          body.append(assistantText('small','',`${proposal.sheet||'Base'} · ${proposal.field||'Preço'} · Atual: ${proposal.currentValue ?? '—'} → Proposto: ${proposal.proposedValue ?? '—'}`));
+          if(proposal.reason) body.append(assistantText('small','',proposal.reason));
+          if(proposal.approved) body.append(assistantText('small','assistant-approved-label','Aprovado e aplicado'));
+          label.append(checkbox,body); box.append(label);
+        });
+        const actions=document.createElement('div'); actions.className='assistant-proposal-actions';
+        const approve=assistantText('button','btn primary','Aprovar alterações selecionadas'); approve.type='button';
+        approve.onclick=()=>assistantApproveProposals(item,box,approve);
+        actions.append(approve); box.append(actions); article.append(box);
+      }
+      const reply=assistantText('button','btn ghost assistant-reply-button','↩ Perguntar sobre esta resposta'); reply.type='button';
+      reply.onclick=()=>{assistantReplyTo={index,text:item.advice||item.documentSummary||''};$('#assistantReplyLabel').textContent='Respondendo à resposta do RHG-Bot';$('#assistantReplyContext').classList.remove('hidden');$('#assistantInput').focus()};
+      article.append(reply);
+    }
+    assistantThread.append(article);
+  });
+  assistantThread.scrollTop=assistantThread.scrollHeight;
+}
+async function assistantFileToPayload(file) {
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error(`Não foi possível ler ${file.name}.`));
+    reader.onload=()=>{
+      const value=String(reader.result||'');
+      const comma=value.indexOf(',');
+      if(comma<0) return reject(new Error(`Formato inválido: ${file.name}.`));
+      resolve({name:file.name,type:file.type||'application/octet-stream',size:file.size,dataBase64:value.slice(comma+1)});
+    };
+    reader.readAsDataURL(file);
+  });
+}
+async function assistantApproveProposals(messageItem,box,button) {
+  const checks=[...box.querySelectorAll('input[type="checkbox"]')];
+  const updates=checks.filter(c=>c.checked&&!c.disabled).map(c=>messageItem.suggestedUpdates[Number(c.dataset.proposalIndex)]);
+  if(!updates.length){assistantSetStatus('Marque ao menos uma alteração para aprovar.');return}
+  if(!confirm(`Confirma a aplicação de ${updates.length} alteração(ões) na Base RHG?`)) return;
+  button.disabled=true; button.textContent='Aplicando alterações...';
+  try {
+    const response=await fetch('/api/rhg/assistant/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({updates})});
+    const data=await response.json(); if(!response.ok||!data.ok) throw new Error(data.error||'Falha ao atualizar a Base.');
+    const results=data.results||[];
+    results.forEach((result)=>{
+      const found=messageItem.suggestedUpdates.find(p=>p._proposalKey===result.proposalKey);
+      if(found&&result.ok) found.approved=true;
+    });
+    assistantSetStatus(`${results.filter(x=>x.ok).length} alteração(ões) aplicada(s). ${results.filter(x=>!x.ok).length?results.filter(x=>!x.ok).length+' não aplicada(s).':''}`);
+    messageItem.text = (messageItem.text||'') + '\n\nResultado da aprovação: '+results.map(x=>`${x.ok?'OK':'Não aplicado'} — ${x.name}: ${x.message||''}`).join('; ');
+    assistantRenderThread();
+  } catch(error) { assistantSetStatus('Erro na aprovação: '+error.message,true); }
+  finally { button.disabled=false; button.textContent='Aprovar alterações selecionadas'; }
+}
+
+$$('.chips button').forEach(button=>button.onclick=()=>{$('#assistantInput').value=button.dataset.q;$('#assistantInput').focus()});
+$('#assistantFiles').addEventListener('change',event=>{
+  const files=[...event.target.files||[]];
+  for(const file of files){
+    if(file.size>8*1024*1024){assistantSetStatus(`${file.name} excede o limite de 8 MB.`,true);continue;}
+    const totalBytes=assistantPendingFiles.reduce((sum,current)=>sum+current.size,0);
+    if(totalBytes+file.size>12*1024*1024){assistantSetStatus('O conjunto de anexos não pode ultrapassar 12 MB por mensagem.',true);continue;}
+    if(!/\.(pdf|xlsx|xlsm|csv|txt|png|jpe?g|webp)$/i.test(file.name)){assistantSetStatus(`Formato não aceito: ${file.name}.`,true);continue;}
+    if(assistantPendingFiles.length>=4){assistantSetStatus('Anexe no máximo 4 arquivos por mensagem.',true);break;}
+    assistantPendingFiles.push(file);
+  }
+  assistantRenderAttachments(); event.target.value='';
+});
+$('#assistantCancelReply').onclick=()=>{assistantReplyTo=null;$('#assistantReplyContext').classList.add('hidden')};
+$('#assistantNewChat').onclick=()=>{
+  if(assistantMessages.length&&!confirm('Iniciar uma nova conversa? O histórico desta conversa será limpo desta tela.')) return;
+  assistantMessages=[]; assistantLastProposals=[]; assistantReplyTo=null; assistantPendingFiles=[];
+  assistantRenderAttachments(); assistantRenderThread(); $('#assistantReplyContext').classList.add('hidden'); assistantSetStatus('Nova conversa iniciada.');
+};
 $('#assistantBtn').onclick=async()=>{
  const q=$('#assistantInput').value.trim();
- if(!q){$('#assistantStatus').textContent='Descreva a situação primeiro.';return}
- $('#assistantBtn').disabled=true;$('#assistantStatus').textContent='Consultando o RHG-Bot...';
+ if(!q&&!assistantPendingFiles.length){assistantSetStatus('Digite uma pergunta ou anexe um arquivo.');return}
+ $('#assistantBtn').disabled=true; $('#assistantBtn').textContent='Analisando...'; assistantSetStatus('O RHG-Bot está analisando a solicitação e os arquivos...');
+ const files=assistantPendingFiles.slice();
+ let userText=q;
  try{
+   const attachments=await Promise.all(files.map(assistantFileToPayload));
+   const fileNames=files.map(f=>f.name);
+   userText=q||(fileNames.length?`Analise o(s) arquivo(s) anexado(s): ${fileNames.join(', ')} e indique possíveis atualizações para a Base RHG.`:'');
+   assistantMessages.push({role:'user',text:userText,files:fileNames});
+   assistantRenderThread();
    const d=collect();
-   const r=await fetch('/api/rhg/assistant',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-     situation:q,context:{client:d.client,description:d.description,services:d.services,materials:d.materials,discount:d.discount,total:$('#grandTotal').textContent}
+   const conversation=assistantMessages.slice(-13,-1).map(item=>({role:item.role,text:[item.text,item.role==='assistant'?[item.advice,item.message,item.documentSummary].filter(Boolean).join('\n\n'):''].filter(Boolean).join('\n\n'),files:item.files||[]}));
+   const replyPrefix=assistantReplyTo?.text?`\n\nCONTEXTO DA RESPOSTA SELECIONADA:\n${assistantReplyTo.text}`:'';
+   const response=await fetch('/api/rhg/assistant',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+     situation:userText+replyPrefix,conversation,attachments,
+     context:{client:d.client,description:d.description,services:d.services,materials:d.materials,discount:d.discount,total:$('#grandTotal')?.textContent||''}
    })});
-   const data=await r.json();
-   if(!r.ok) throw new Error(data.error||'Falha na integração');
-   $('#advice').textContent=data.advice||'';
-   $('#message').textContent=data.message||'';
-   $('#assistantResult').classList.remove('hidden');
-   $('#assistantStatus').textContent='Resposta recebida do RHG-Bot.';
- }catch(e){$('#assistantStatus').textContent='Não foi possível consultar o RHG-Bot: '+e.message}
- finally{$('#assistantBtn').disabled=false}
+   const data=await response.json(); if(!response.ok) throw new Error(data.error||'Falha na integração');
+   const proposals=Array.isArray(data.suggestedUpdates)?data.suggestedUpdates:[];
+   proposals.forEach((p,i)=>{p._proposalKey=`${Date.now()}-${i}`; if(!p.sourceName) p.sourceName=fileNames.join(', ')||'Análise sem anexo';});
+   assistantMessages.push({role:'assistant',advice:data.advice||data.answer||'Análise concluída.',message:data.message||'',documentSummary:data.documentSummary||'',suggestedUpdates:proposals,text:data.advice||''});
+   assistantPendingFiles=[]; assistantRenderAttachments(); $('#assistantInput').value=''; assistantReplyTo=null; $('#assistantReplyContext').classList.add('hidden');
+   assistantRenderThread(); assistantSetStatus(proposals.length?'Análise concluída. Revise as propostas antes de aprovar.':'Resposta recebida do RHG-Bot.');
+ }catch(error){
+   if(assistantMessages.at(-1)?.role==='user'&&assistantMessages.at(-1)?.text===userText) assistantMessages.pop();
+   assistantRenderThread(); assistantSetStatus('Não foi possível consultar o RHG-Bot: '+error.message,true);
+ }finally{$('#assistantBtn').disabled=false;$('#assistantBtn').textContent='Enviar pergunta ↗'}
 };
-$('#copyBtn').onclick=async()=>{try{await navigator.clipboard.writeText($('#message').textContent);$('#copyBtn').textContent='Copiado!';setTimeout(()=>$('#copyBtn').textContent='Copiar mensagem',1000)}catch(e){}};
+$('#assistantInput').addEventListener('keydown',event=>{if(event.key==='Enter'&&(event.ctrlKey||event.metaKey)){event.preventDefault();$('#assistantBtn').click()}});
+assistantRenderThread(); assistantRenderAttachments();
 
 if(!services.children.length)addRow('service');if(!materials.children.length)addRow('material');localStorage.removeItem(draftKey);renderDrafts();calc();
 // =====================================================

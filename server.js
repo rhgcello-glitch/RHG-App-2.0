@@ -2,6 +2,8 @@ require('dotenv').config();
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const zlib = require("zlib");
+const crypto = require("crypto");
 
 const PORT = Number(process.env.PORT || 8787);
 const RHG_BOT_ENDPOINT = process.env.RHG_BOT_ENDPOINT || "";
@@ -153,7 +155,7 @@ async function callRHGPhotoAction(action, payload = {}) {
 
   return data;
 }
-function readJsonRequest(req, limit = 12 * 1024 * 1024) {
+function readJsonRequest(req, limit = 18 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
     let raw = "", size = 0;
     req.on("data", chunk => { size += chunk.length; if (size > limit) { reject(new Error("Arquivo muito grande. Tente uma imagem menor.")); req.destroy(); return; } raw += chunk.toString("utf8"); });
@@ -161,6 +163,167 @@ function readJsonRequest(req, limit = 12 * 1024 * 1024) {
     req.on("error", reject);
   });
 }
+
+function xmlDecode(value) {
+  return String(value || '').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,'&');
+}
+function unzipEntries(buffer) {
+  // Leitor ZIP mínimo para arquivos Office Open XML (.xlsx/.xlsm), sem dependências externas.
+  let eocd = -1;
+  for (let i = buffer.length - 22; i >= Math.max(0, buffer.length - 65558); i--) {
+    if (buffer.readUInt32LE(i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('Arquivo Excel inválido: estrutura ZIP não encontrada.');
+  const count = buffer.readUInt16LE(eocd + 10);
+  let offset = buffer.readUInt32LE(eocd + 16);
+  const entries = new Map();
+  for (let i=0; i<count; i++) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) break;
+    const method = buffer.readUInt16LE(offset + 10);
+    const compressedSize = buffer.readUInt32LE(offset + 20);
+    const nameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    const localOffset = buffer.readUInt32LE(offset + 42);
+    const name = buffer.subarray(offset + 46, offset + 46 + nameLength).toString('utf8');
+    const localNameLength = buffer.readUInt16LE(localOffset + 26);
+    const localExtraLength = buffer.readUInt16LE(localOffset + 28);
+    const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+    const compressed = buffer.subarray(dataStart, dataStart + compressedSize);
+    let data;
+    if (method === 0) data = compressed;
+    else if (method === 8) data = zlib.inflateRawSync(compressed);
+    else { offset += 46 + nameLength + extraLength + commentLength; continue; }
+    entries.set(name, data.toString('utf8'));
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+  return entries;
+}
+function extractXlsxText(buffer) {
+  const entries = unzipEntries(buffer);
+  const sharedXml = entries.get('xl/sharedStrings.xml') || '';
+  const shared = [...sharedXml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map(m => [...m[1].matchAll(/<t(?:\s+[^>]*)?>([\s\S]*?)<\/t>/g)].map(t => xmlDecode(t[1])).join(''));
+  const workbook = entries.get('xl/workbook.xml') || '';
+  const names = [...workbook.matchAll(/<sheet\b[^>]*name="([^"]+)"[^>]*>/g)].map(m=>xmlDecode(m[1]));
+  const sheets = [...entries.keys()].filter(k=>/^xl\/worksheets\/sheet\d+\.xml$/.test(k)).sort((a,b)=>Number(a.match(/sheet(\d+)/)[1])-Number(b.match(/sheet(\d+)/)[1]));
+  const output=[];
+  sheets.forEach((key,index)=>{
+    const xml=entries.get(key)||'';
+    const rowTexts=[];
+    for(const rowMatch of xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)){
+      const cells=[];
+      for(const cellMatch of rowMatch[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/g)){
+        const attrs=cellMatch[1], body=cellMatch[2];
+        const type=(attrs.match(/\bt="([^"]+)"/)||[])[1]||'';
+        const value=(body.match(/<v>([\s\S]*?)<\/v>/)||[])[1];
+        let text='';
+        if(type==='s'&&value!==undefined) text=shared[Number(value)]||'';
+        else if(type==='inlineStr') text=[...body.matchAll(/<t(?:\s+[^>]*)?>([\s\S]*?)<\/t>/g)].map(m=>xmlDecode(m[1])).join('');
+        else if(value!==undefined) text=xmlDecode(value);
+        cells.push(text.replace(/\s+/g,' ').trim());
+      }
+      if(cells.some(Boolean)) rowTexts.push(cells.join(' | '));
+    }
+    if(rowTexts.length) output.push(`ABA: ${names[index]||`Planilha ${index+1}`}\n${rowTexts.slice(0,500).join('\n')}`);
+  });
+  if(!output.length) throw new Error('Não foi possível extrair linhas da planilha Excel.');
+  return output.join('\n\n').slice(0,120000);
+}
+function prepareAssistantAttachments(attachments=[]) {
+  const prepared=[];
+  let combinedText='';
+  for(const attachment of attachments.slice(0,4)){
+    const name=String(attachment.name||'arquivo').slice(0,180);
+    const type=String(attachment.type||'').toLowerCase();
+    const base64=String(attachment.dataBase64||'').replace(/\s/g,'');
+    if(!base64) throw new Error(`O arquivo ${name} chegou vazio.`);
+    if(base64.length>11*1024*1024) throw new Error(`O arquivo ${name} excede o limite permitido de 8 MB.`);
+    const buffer=Buffer.from(base64,'base64');
+    if(!buffer.length) throw new Error(`Não foi possível ler ${name}.`);
+    const ext=path.extname(name).toLowerCase();
+    if(['.csv','.txt'].includes(ext)||type.includes('text/')){
+      combinedText += `\n\nARQUIVO: ${name}\n${buffer.toString('utf8').slice(0,45000)}`;
+      prepared.push({name,type,kind:'text'});
+    } else if(['.xlsx','.xlsm'].includes(ext)||type.includes('spreadsheet')){
+      combinedText += `\n\nARQUIVO: ${name}\n${extractXlsxText(buffer)}`;
+      prepared.push({name,type,kind:'spreadsheet'});
+    } else if(ext==='.pdf'||type==='application/pdf'){
+      prepared.push({name,type:'application/pdf',kind:'pdf',dataUrl:`data:application/pdf;base64,${base64}`});
+    } else if(/^image\//.test(type)||/\.(png|jpe?g|webp)$/i.test(name)){
+      const imageType=type.startsWith('image/')?type:({'.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp'}[ext]||'image/jpeg');
+      prepared.push({name,type:imageType,kind:'image',dataUrl:`data:${imageType};base64,${base64}`});
+    } else throw new Error(`Formato não suportado: ${name}.`);
+  }
+  return {attachments:prepared,documentText:combinedText.slice(0,120000)};
+}
+
+function approvalSigningPayload(proposal) {
+  return {
+    operation: proposal.operation || 'update', sheet: proposal.sheet || '',
+    recordId: proposal.recordId || '', name: proposal.name || proposal.itemName || '',
+    unit: proposal.unit || '', field: proposal.field || '',
+    currentValue: proposal.currentValue === undefined ? null : proposal.currentValue,
+    proposedValue: proposal.proposedValue, reason: proposal.reason || '',
+    confidence: proposal.confidence || '', sourceName: proposal.sourceName || '',
+    supplier: proposal.supplier || ''
+  };
+}
+function signApprovalProposal(proposal) {
+  if (!RHG_SHEETS_API_KEY) throw new Error('RHG_SHEETS_API_KEY não configurada para proteger as aprovações.');
+  const signed = { ...proposal, _approvalExpiresAt: Date.now() + 30 * 60 * 1000 };
+  signed._approvalToken = crypto.createHmac('sha256', RHG_SHEETS_API_KEY).update(JSON.stringify(approvalSigningPayload(signed))).digest('hex');
+  return signed;
+}
+function verifyApprovalProposal(proposal) {
+  if (!RHG_SHEETS_API_KEY || !proposal._approvalToken || Number(proposal._approvalExpiresAt) < Date.now()) return false;
+  const expected = crypto.createHmac('sha256', RHG_SHEETS_API_KEY).update(JSON.stringify(approvalSigningPayload(proposal))).digest('hex');
+  const suppliedBuffer = Buffer.from(String(proposal._approvalToken));
+  const expectedBuffer = Buffer.from(expected);
+  return suppliedBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(suppliedBuffer, expectedBuffer);
+}
+
+function nextSequentialId(rows, field, prefix) {
+  const max = (rows||[]).reduce((n,row)=>{
+    const match=String(row[field]||'').match(new RegExp('^'+prefix+'-(\\d+)$','i'));
+    return match?Math.max(n,Number(match[1])||0):n;
+  },0);
+  return `${prefix}-${String(max+1).padStart(3,'0')}`;
+}
+
+const RHG_BOT_PRICING_KNOWLEDGE = `
+CONHECIMENTO TÉCNICO-COMERCIAL RHG — REFERÊNCIA 2026
+A BASE RHG é sempre a fonte principal para preços já cadastrados. A tabela regional a seguir é apenas referência externa secundária (mão de obra, região SUDESTE); não substitui automaticamente os preços da Base nem representa cotação confirmada pela RHG.
+
+MÉDIAS REGIONAIS DO SUDESTE (preço médio calculado pela média aritmética dos limites da apostila):
+${[
+['Troca dos condutores do chuveiro',127.5,'serviço'],['Troca de disjuntor simples',82.5,'serviço'],['Instalação de disjuntor DR',200,'serviço'],['Instalação de ponto de tomada',55,'serviço'],['Instalação de tomada 220V',85,'serviço'],['Instalação de interruptor simples',49.5,'serviço'],['Instalação de interruptor paralelo',80,'serviço'],['Instalação de ponto de iluminação',70,'serviço'],['Troca de chuveiro elétrico',102.5,'serviço'],['Instalação de luminária de teto',75,'serviço'],['Instalação de perfil de LED embutido (por metro)',127.5,'serviço por metro'],['Instalação de ventilador de teto',122.5,'serviço'],['Instalação de arandela de parede',70,'serviço'],['Reparo de curto-circuito',185,'serviço'],['Instalação de campainha elétrica',85,'serviço'],['Instalação de sensor de presença',127.5,'serviço'],['Instalação de fiação para ar-condicionado',337.5,'serviço'],['Instalação de dimmer',80,'serviço'],['Instalação de tomada USB',70,'serviço'],['Passagem de conduíte em parede',27.5,'por metro'],['Troca de lâmpada de LED',19,'por unidade'],['Instalação de interruptor remoto (Wi-Fi)',127.5,'serviço']
+].map(x=>`- ${x[0]}: R$ ${x[1].toFixed(2).replace('.',',')} (${x[2]}, mão de obra referencial).`).join('\n')}
+
+REGRAS DE PRECIFICAÇÃO E ORÇAMENTO:
+1. Identifique escopo, quantidade, unidade, local, condições de execução, acabamento e o que já existe antes de fechar o preço.
+2. Separe mão de obra, materiais, infraestrutura, deslocamento, equipamentos, impostos/encargos, contingência e lucro. Declare inclusões e exclusões.
+3. Preço por ponto/unidade para pontos e dispositivos; por metro para infraestrutura linear; por quadro para quadros; diária para trabalhos curtos/manutenção; empreitada global para escopo definido; unitária para quantidades medidas; mista quando partes têm medição diferente.
+4. Não some diária e preços unitários cobrando duas vezes a mesma execução. Explique a composição quando combinar modalidades.
+5. Empreitada: estime MO (diária x dias ou horas), materiais, despesas, encargos, contingência e lucro. Apostila sugere contingência de 10%–20% e lucro de 15%–30%; trate como parâmetros ajustáveis, nunca como padrão obrigatório.
+6. Diária: considerar remuneração líquida, encargos/reservas, custos operacionais, impostos/taxas e margem para investimentos. Use os custos reais do profissional quando fornecidos.
+7. Projetos sem medições precisas: a apostila sugere reserva de 10%–15%; explique que é margem de incerteza e evite duplicar contingência.
+8. Materiais: consulte Materiais Associados na Base primeiro; inclua quantidades, unidades, especificações e sobra adequada. Não invente marca, bitola, modelo ou quantidade exata sem dados.
+9. Fatores preliminares da apostila (não substituem medição/dimensionamento): tomada simples 4m eletroduto/8m fio 2,5mm²; tomada dupla 5m/10m fio 2,5mm²; iluminação 6m eletroduto/12m fio 1,5mm²; chuveiro 8–12m cabo 6mm²; circuito de força 8–12m cabo 4mm²; split 15–25m cabo 4–6mm². A apostila contém divergência quanto a metros de eletroduto por ponto (2,5m em passagem interna vs 8–12m de estimativa geral); explicite a hipótese e confirme pelo trajeto real.
+10. Preços de serviço na apostila normalmente são mão de obra; materiais, conduítes, cabos, caixas, novos circuitos, rasgos e acabamentos civis devem ser discriminados à parte quando aplicáveis.
+11. A referência da apostila para conexão ao circuito existente varia entre aproximadamente 2m e 3,2m; não trate como regra RHG. Pergunte/registre a distância ou sinalize como variável.
+12. Considere deslocamento, combustível, alimentação, hospedagem, aluguel de ferramentas e tempo de execução quando aplicáveis.
+13. Adicionais sugeridos pela apostila: noturno 25%–30%; fim de semana 30%–50%; feriado cerca de 50%; emergência pode variar (20%–50% em um trecho e 25%–100% em outro); altura/difícil acesso 10%–40% conforme risco. Há divergência de percentuais na fonte. Nunca aplique automaticamente: apresente faixa, motivo e peça aprovação do responsável.
+14. Fornecimento de materiais pelo prestador pode envolver taxa operacional/risco sugerida de 10%–15%, mas deve ser justificada e não confundir com lucro ou margem já incluída.
+15. Grandes metragens podem permitir desconto por volume; a apostila sugere 5%–15% acima de 200m. Avalie custos e não aplique automaticamente.
+16. Perfis C/B/A/AA mudam a forma de apresentar as opções, não justificam discriminação nem multiplicador automático. C: pacote essencial/econômico e opcionais; B: equilíbrio custo-benefício; A: acabamento, qualidade, prazo e atendimento personalizado; AA: soluções personalizadas, integração, automação e manutenção especializada. Os valores de exemplos por perfil da apostila não devem substituir a tabela de serviços nem a Base RHG.
+17. Tipo do cliente (Residencial/Comercial) é diferente do perfil comercial (C/B/A/AA). Nunca confunda as duas informações.
+18. Prazos: estime duração de execução conforme quantidade, produtividade/equipe, complexidade, infraestrutura, acesso, disponibilidade de material e dependências. Diferencie duração estimada de data de início. Não prometa prazo certo sem confirmação.
+19. Proposta deve conter cliente/local/data, escopo detalhado, quantidades e especificações, inclusões/exclusões, mão de obra, materiais, deslocamento/adicionais, subtotal, desconto, total, prazo, validade, pagamento, garantia e condições para aditivos.
+20. Alterações de escopo devem gerar revisão do preço e prazo, preferencialmente mediante aprovação/aditivo.
+21. Indique referências normativas quando aplicáveis (NR-10, NBR 5410, NBR 5419); não afirme conformidade nem substitua análise técnica, projeto, laudo ou ART.
+22. Os percentuais e preços acima são orientativos da apostila 2026, não uma determinação legal ou garantia de preço de mercado local. Reavalie com custos reais, cidade, concorrência, qualificação e histórico RHG.
+
+PERFIL DO CLIENTE: Tipo = Residencial ou Comercial. Perfil = C, B, A ou AA. Use o perfil apenas para adaptar a proposta e as opções; o preço base deve continuar vindo da BASE RHG ou de estimativa técnica justificada.`;
 
 function normalizeText(value) {
   return String(value || "")
@@ -273,7 +436,7 @@ REGRAS:
 - Não invente preços históricos.
 - R$ 0,00 pode significar preço pendente, material do cliente ou item a providenciar.
 - Taxa de disponibilidade sobre custo-base: até R$500 = 20%; acima de R$500 até R$1.000 = 15%; acima de R$1.000 = 10%.
-- Perfis de cliente: comercial, baixa, comum, alta, alto padrão. Só use a classificação quando informada.
+- Tipo de cliente e perfil comercial são campos diferentes: Tipo = Residencial ou Comercial; Perfil = C, B, A ou AA. Nunca misture os dois. C/B/A/AA orientam apenas a apresentação de opções; não aplicam multiplicador automático nem alteram o preço da Base.
 - Quando o usuário pedir uma estimativa, não peça confirmação antes de apresentar uma estimativa preliminar se houver informação suficiente para estimar.
 - Para uma solicitação de orçamento com descrição suficiente do serviço, o modo "interpret" deve obrigatoriamente tentar preencher valores estimados quando não houver preços na BASE RHG.
 - A ausência de detalhes secundários, como marca, modelo da luminária, distância exata até o quadro ou método definitivo de instalação, não deve impedir uma estimativa preliminar.
@@ -450,9 +613,29 @@ Nunca apresente uma estimativa como preço cadastrado, cotado ou confirmado pela
 FORMATO PARA "assistant":
 {
   "advice":"...",
-  "message":"..."
+  "message":"...",
+  "documentSummary":"...",
+  "suggestedUpdates":[{"operation":"update|insert","sheet":"MATERIAIS|SERVIÇOS","recordId":"ID existente ou vazio para novo cadastro","name":"nome exato do item","unit":"unidade","field":"Preço Unitário|Preço Base","currentValue":0,"proposedValue":0,"reason":"motivo e referência do arquivo","confidence":"alta|media|baixa"}]
+}
+REGRAS PARA ARQUIVOS E ATUALIZAÇÃO DA BASE:
+- Ao receber arquivo, leia seus dados e resuma o que encontrou em documentSummary.
+- Se o arquivo trouxer preços/cadastros, compare com os registros relevantes fornecidos da BASE RHG e proponha somente diferenças identificáveis.
+- suggestedUpdates deve ficar vazio quando não houver dado confiável para propor alteração.
+- Não invente preço, nome, unidade, fornecedor, linha ou identificador. Não invente um ID/recordId. Para registro existente, use exatamente o ID encontrado na BASE RHG; para novo registro use operation=insert e recordId vazio.
+- Para MATERIAIS, field deve ser Preço Unitário; para SERVIÇOS, field deve ser Preço Base. proposedValue deve ser numérico positivo e extraído do arquivo. currentValue deve refletir a Base enviada, ou null se novo.
+- Não proponha atualização se nome/unidade/descrição não permitirem identificar o item com segurança. Use baixa confiança ou descreva a pendência em advice.
+- Cada proposta precisa ter reason com página/aba/linha/fornecedor/data do arquivo se disponível. Preserve o preço anterior e nunca alegue que a Base já foi atualizada.
+- Não use o perfil C/B/A/AA para alterar os valores cadastrados.
+- O usuário precisa aprovar explicitamente cada proposta antes de qualquer escrita na Base RHG.
+{
+  "advice":"...",
+  "message":"...",
+  "documentSummary":"...",
+  "suggestedUpdates":[]
 }
 `;
+
+  if(payload?.mode !== "quote-description") instructions += "\n\n" + RHG_BOT_PRICING_KNOWLEDGE;
 
   if(payload?.mode === "quote-description") {
     instructions += `
@@ -477,11 +660,13 @@ MODO ESPECIAL: DESCRIÇÃO FINAL DO ORÇAMENTO
 // CONSULTA COMPLETA À BASE RHG
 // =====================================================
 
-const description =
-  payload?.serviceDescription ||
-  payload?.description ||
-  payload?.solicitacao ||
-  JSON.stringify(payload);
+const description = [
+  payload?.situation,
+  payload?.serviceDescription,
+  payload?.description,
+  payload?.documentText,
+  payload?.solicitacao
+].filter(Boolean).join("\n\n") || JSON.stringify({ ...payload, attachments:(payload.attachments||[]).map(a=>({name:a.name,type:a.type,kind:a.kind})) });
 
 const searchTerms = getSearchTerms(description);
 
@@ -547,14 +732,14 @@ const baseMateriais =
   filterRHGRecords(
     todosMateriais,
     searchTerms,
-    40
+    payload?.attachments?.length ? 90 : 40
   );
 
 const baseServicos =
   filterRHGRecords(
     todosServicos,
     searchTerms,
-    20
+    payload?.attachments?.length ? 70 : 20
   );
 
 // -----------------------------------------------------
@@ -701,6 +886,12 @@ const historicoServicosContexto =
 // 11. CONTEXTO COMPLETO DA BASE RHG
 // -----------------------------------------------------
 
+const hasVisualAttachment = Array.isArray(payload.attachments) && payload.attachments.some(file => file.kind==='pdf' || file.kind==='image');
+const catalogoParaLeituraVisual = hasVisualAttachment ? {
+  materiais: todosMateriais.filter(item=>String(item['Ativo']||'SIM').toUpperCase()!=='NÃO' && String(item['Ativo']||'SIM').toUpperCase()!=='NAO').slice(0,500).map(item=>({id:item['ID Material'],name:item['Material'],unit:item['Unidade'],currentPrice:item['Preço Unitário']})),
+  servicos: todosServicos.filter(item=>String(item['Ativo']||'SIM').toUpperCase()!=='NÃO' && String(item['Ativo']||'SIM').toUpperCase()!=='NAO').slice(0,300).map(item=>({id:item['ID Serviço'],name:item['Nome do Serviço'],unit:item['Unidade de Cobrança'],currentPrice:item['Preço Base']}))
+} : null;
+
 const contextoBase = {
 
   materiais:
@@ -708,6 +899,8 @@ const contextoBase = {
 
   servicos:
     servicosContexto,
+
+  catalogo_para_comparacao_de_arquivos: catalogoParaLeituraVisual,
 
   materiais_associados:
     materiaisAssociadosContexto,
@@ -725,11 +918,23 @@ const contextoBase = {
     perfisCliente
 };
 
-const input = `Responda em JSON. A resposta desta solicitação deve ser JSON válido.
-${JSON.stringify({
-  solicitacao: payload,
-  base_rhg: contextoBase
-})}`;
+const { conversation: _conversation, ...payloadForModel } = payload;
+const safePayload = { ...payloadForModel, attachments: (payload.attachments||[]).map(a=>({name:a.name,type:a.type,kind:a.kind})) };
+const conversationText = Array.isArray(payload.conversation) ? payload.conversation.slice(-12).map(m=>`${m.role==='assistant'?'RHG-Bot':'Usuário'}: ${String(m.text||'').slice(0,5000)}`).join("\n\n") : '';
+const requestText = `Responda em JSON. A resposta desta solicitação deve ser JSON válido.
+CONTEXTO DA CONVERSA:
+${conversationText}
+
+SOLICITAÇÃO ATUAL E BASE RHG:
+${JSON.stringify({ solicitacao: safePayload, base_rhg: contextoBase })}`;
+const inputContent = [{type:'input_text',text:requestText}];
+if (Array.isArray(payload.attachments)) {
+  for (const attachment of payload.attachments) {
+    if (attachment.kind==='pdf' && attachment.dataUrl) inputContent.push({type:'input_file',filename:attachment.name,file_data:attachment.dataUrl});
+    else if (attachment.kind==='image' && attachment.dataUrl) inputContent.push({type:'input_image',image_url:attachment.dataUrl,detail:'high'});
+  }
+}
+const input = [{role:'user',content:inputContent}];
   const body = {
     model,
     instructions,
@@ -1100,7 +1305,7 @@ const server=http.createServer(async(req,res)=>{
         quoteNumber:String(row["Número do Orçamento"]||""), date:row["Data"]||"",
         updatedAt:row["Atualizado em"]||row["Data"]||"", version:Number(row["Versão"]||1),
         status:String(row["Status"]||"Em análise"),
-        client:{id:String(row["ID Cliente"]||""),name:String(row["Cliente"]||""),phone:String(row["Telefone do Cliente"]||""),type:String(row["Tipo de Cliente"]||"Residencial"),profile:String(row["Perfil do Cliente"]||"Comum"),address:String(row["Endereço do Cliente"]||"")},
+        client:{id:String(row["ID Cliente"]||""),name:String(row["Cliente"]||""),phone:String(row["Telefone do Cliente"]||""),type:String(row["Tipo de Cliente"]||"Residencial"),profile:String(row["Perfil do Cliente"]||""),address:String(row["Endereço do Cliente"]||"")},
         description:String(row["Descrição do Serviço"]||row["Observações"]||""),
         quoteDescription:String(row["Descrição do Orçamento"]||""),
         discount:Number(row["Desconto"]||0), conditions:String(row["Condições Comerciais"]||""),
@@ -1130,20 +1335,105 @@ const server=http.createServer(async(req,res)=>{
     }
 
     if(req.method==="POST" && (req.url==="/api/rhg/interpret" || req.url==="/api/rhg/assistant" || req.url==="/api/rhg/quote-description")){
-      let raw="";
-      req.on("data",c=>raw+=c);
-      req.on("end",async()=>{
-        let body;
-        try{body=JSON.parse(raw||"{}")}catch{return send(res,400,{error:"JSON inválido."})}
-        try{
-          const mode=req.url.endsWith("/interpret")?"interpret":req.url.endsWith("/quote-description")?"quote-description":"assistant";
-          const result=await callRHGBot({mode,...body});
-          send(res,200,result);
-        }catch(e){
-          send(res,e.code==="NOT_CONFIGURED"?503:502,{error:e.message});
+      try {
+        const body=await readJsonRequest(req,18*1024*1024);
+        const mode=req.url.endsWith("/interpret")?"interpret":req.url.endsWith("/quote-description")?"quote-description":"assistant";
+        if(mode==='assistant' && Array.isArray(body.attachments) && body.attachments.length){
+          const prepared=prepareAssistantAttachments(body.attachments);
+          body.attachments=prepared.attachments;
+          body.documentText=[body.documentText||'',prepared.documentText].filter(Boolean).join('\n\n').slice(0,120000);
         }
-      });
-      return;
+        const result=await callRHGBot({mode,...body});
+        if(mode==='assistant' && Array.isArray(result.suggestedUpdates) && result.suggestedUpdates.length){
+          const sourceFiles=(body.attachments||[]).map(a=>a.name).filter(Boolean).join(', ');
+          result.suggestedUpdates=result.suggestedUpdates.map(proposal=>signApprovalProposal({...proposal,sourceName:proposal.sourceName||sourceFiles||'Análise RHG-Bot'}));
+        }
+        return send(res,200,result);
+      } catch(e) {
+        return send(res,e.message.includes('limite')?413:(e.code==="NOT_CONFIGURED"?503:502),{error:e.message});
+      }
+    }
+
+    // Aprovação explícita e validada de alterações sugeridas pelo RHG-Bot.
+    if(req.method==="POST" && req.url==="/api/rhg/assistant/approve"){
+      try {
+        const body=await readJsonRequest(req,1024*1024);
+        const updates=Array.isArray(body.updates)?body.updates:[];
+        if(!updates.length||updates.length>30) throw new Error('Selecione entre 1 e 30 propostas para aprovação.');
+        const results=[];
+        for(const proposal of updates){
+          const proposalKey=String(proposal._proposalKey||'');
+          try {
+          if(!verifyApprovalProposal(proposal)){results.push({ok:false,proposalKey,name:proposal.name||'',message:'Proposta inválida ou expirada. Faça uma nova análise do arquivo antes de aprovar.'});continue;}
+          const sheet=proposal.sheet;
+          if(!['MATERIAIS','SERVIÇOS'].includes(sheet)) {results.push({ok:false,proposalKey,name:proposal.name||'',message:'Aba não permitida.'});continue;}
+          const value=Number(proposal.proposedValue);
+          if(!Number.isFinite(value)||value<=0||value>100000000) {results.push({ok:false,proposalKey,name:proposal.name||'',message:'Preço proposto inválido.'});continue;}
+          const rows=await callRHGSheets(sheet);
+          const isMaterial=sheet==='MATERIAIS';
+          const idField=isMaterial?'ID Material':'ID Serviço';
+          const nameField=isMaterial?'Material':'Nome do Serviço';
+          const priceField=isMaterial?'Preço Unitário':'Preço Base';
+          if(proposal.field && proposal.field!==priceField){results.push({ok:false,proposalKey,name:proposal.name||'',message:'Campo de preço não corresponde à aba indicada.'});continue;}
+          if(proposal.confidence==='baixa'){results.push({ok:false,proposalKey,name:proposal.name||'',message:'Confiança baixa. Revise o cadastro manualmente antes de aprovar.'});continue;}
+          const itemName=String(proposal.name||proposal.itemName||'').trim();
+          if(!['insert','update'].includes(proposal.operation||'update')){results.push({ok:false,proposalKey,name:itemName,message:'Operação da proposta não reconhecida.'});continue;}
+          if(!itemName){results.push({ok:false,proposalKey,name:'',message:'Nome do item não informado.'});continue;}
+          if(proposal.operation==='insert'&&!String(proposal.unit||'').trim()){results.push({ok:false,proposalKey,name:itemName,message:'A unidade é obrigatória para cadastrar um item novo.'});continue;}
+          let record=null;
+          if(proposal.operation==='insert'){
+            const duplicate=(rows||[]).find(r=>normalizeText(r[nameField])===normalizeText(itemName));
+            if(duplicate){results.push({ok:false,proposalKey,name:itemName,message:`Já existe na Base com ID ${duplicate[idField]||'sem ID'}. A proposta precisa ser convertida em atualização.`});continue;}
+          } else {
+            const recordId=String(proposal.recordId||'').trim();
+            record=(rows||[]).find(r=>recordId&&String(r[idField]||'').trim()===recordId);
+            if(!record&&itemName) record=(rows||[]).find(r=>normalizeText(r[nameField])===normalizeText(itemName));
+            if(!record){results.push({ok:false,proposalKey,name:itemName,message:'O item correspondente não foi encontrado na Base. Atualização cancelada.'});continue;}
+            if(itemName&&normalizeText(record[nameField])!==normalizeText(itemName)){results.push({ok:false,proposalKey,name:itemName,message:'O identificador e o nome da proposta não correspondem ao mesmo registro. Atualização cancelada.'});continue;}
+            const current=Number(String(record[priceField]||'0').replace(',','.'))||0;
+            if(proposal.currentValue!==undefined&&proposal.currentValue!==null&&proposal.currentValue!==''){
+              const expected=Number(String(proposal.currentValue).replace(/[^0-9,.-]/g,'').replace(',','.'));
+              if(Number.isFinite(expected)&&Math.abs(current-expected)>0.01){results.push({ok:false,proposalKey,name:itemName,message:`O preço atual mudou desde a análise (Base: ${current.toFixed(2)}). Atualize a análise antes de aprovar.`});continue;}
+            }
+          }
+          const now=new Date();
+          const date=now.toISOString();
+          const sourceName=String(proposal.sourceName||proposal.source||'Arquivo enviado ao RHG-Bot').slice(0,180);
+          const reason=String(proposal.reason||'Atualização aprovada pelo responsável RHG.').slice(0,900);
+          if(isMaterial){
+            const materialName=itemName||String(record?.[nameField]||'');
+            const materialId=record?.[idField]||nextSequentialId(rows,idField,'MAT');
+            const history=await callRHGSheets('HISTÓRICO DE PREÇOS');
+            const historyId=nextSequentialId(history,'ID Registro','HIST-MAT');
+            const historyRow={'ID Registro':historyId,'Data':date,'Material':materialName,'Fornecedor/Loja':String(proposal.supplier||''),'Unidade':String(proposal.unit||record?.['Unidade']||''),'Preço Unitário':value,'Fonte':sourceName,'Observações':reason,'Tipo de Preço':'REFERÊNCIA DE MERCADO','Tipo de Registro':'Atualização aprovada RHG-Bot'};
+            if(proposal.operation==='insert'){
+              await writeRHGSheets('MATERIAIS','append',{'ID Material':materialId,'Material':materialName,'Unidade':String(proposal.unit||''),'Preço Unitário':value,'Último Preço':value,'Data da Cotação':date,'Fonte da Cotação':sourceName,'Tipo de Preço':'REFERÊNCIA DE MERCADO','Origem do Preço':sourceName,'Data do Último Histórico':date,'ID Último Histórico':historyId,'Ativo':'SIM'});
+            } else {
+              await writeRHGSheets('MATERIAIS','update',{'Preço Unitário':value,'Último Preço':value,'Data da Cotação':date,'Fonte da Cotação':sourceName,'Tipo de Preço':'REFERÊNCIA DE MERCADO','Origem do Preço':sourceName,'Data do Último Histórico':date,'ID Último Histórico':historyId},record._row);
+            }
+            await writeRHGSheets('HISTÓRICO DE PREÇOS','append',historyRow);
+            results.push({ok:true,proposalKey,name:materialName,message:`${materialId} atualizado para R$ ${value.toFixed(2).replace('.',',')}.`});
+          } else {
+            const serviceName=itemName||String(record?.[nameField]||'');
+            const serviceId=record?.[idField]||nextSequentialId(rows,idField,'SVC');
+            const history=await callRHGSheets('HISTÓRICO DE PREÇOS SERVIÇOS');
+            const historyId=nextSequentialId(history,'ID Registro','HIST-SVC');
+            const historyRow={'ID Registro':historyId,'Data':date,'ID Serviço':serviceId,'Serviço':serviceName,'Preço Unitário':value,'Quantidade':1,'Valor':value,'Fonte':sourceName,'Tipo de Preço':'REFERÊNCIA DE MERCADO','Observações':reason};
+            if(proposal.operation==='insert'){
+              await writeRHGSheets('SERVIÇOS','append',{'ID Serviço':serviceId,'Nome do Serviço':serviceName,'Unidade de Cobrança':String(proposal.unit||'unidade'),'Preço Base':value,'Tipo de Preço Base':'REFERÊNCIA DE MERCADO','Origem do Preço Base':sourceName,'Data do Último Histórico':date,'ID Último Histórico':historyId,'Observações':reason,'Ativo':'SIM'});
+            } else {
+              await writeRHGSheets('SERVIÇOS','update',{'Preço Base':value,'Tipo de Preço Base':'REFERÊNCIA DE MERCADO','Origem do Preço Base':sourceName,'Data do Último Histórico':date,'ID Último Histórico':historyId,'Observações':reason},record._row);
+            }
+            await writeRHGSheets('HISTÓRICO DE PREÇOS SERVIÇOS','append',historyRow);
+            results.push({ok:true,proposalKey,name:serviceName,message:`${serviceId} atualizado para R$ ${value.toFixed(2).replace('.',',')}.`});
+          }
+          } catch(proposalError) {
+            results.push({ok:false,proposalKey,name:proposal.name||proposal.itemName||'',message:proposalError.message||'Falha ao aplicar esta proposta.'});
+          }
+        }
+        rhgCatalogCache={updatedAt:0,data:null};
+        return send(res,200,{ok:results.some(r=>r.ok),results});
+      } catch(e) { return send(res,502,{ok:false,error:e.message}); }
     }
 
     let filePath=req.url.split("?")[0];
