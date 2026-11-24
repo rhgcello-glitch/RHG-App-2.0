@@ -40,7 +40,7 @@
 <div class="title"><div><h1>Novo orçamento</h1><p id="quoteNumberLabel" class="quote-number">Ainda não salvo</p><p>Descreva, revise, calcule e finalize.</p></div><button id="newBtn" class="btn ghost">Novo</button></div>
 
 <details class="card accordion-card" data-accordion="client"><summary class="accordion-summary"><span class="accordion-number">1</span><span class="accordion-heading"><strong>Cliente</strong><small>Dados e contato do cliente</small></span><span class="accordion-chevron">⌄</span></summary><div class="accordion-body"><div class="grid">
-<label>Nome<input id="clientName"></label><label>Telefone<input id="clientPhone"></label>
+<label class="client-name-wrap">Nome<div class="desc-wrap"><input id="clientName" autocomplete="off"></div></label><label>Telefone<input id="clientPhone"></label>
 <label>Tipo<select id="clientType"><option>Residencial</option><option>Comercial</option></select></label>
 <label>Perfil<select id="clientProfile"><option>Comum</option><option>Baixa</option><option>Alta</option><option>Alto padrão</option><option>Comercial</option></select></label>
 <label class="full">Endereço<input id="clientAddress"></label>

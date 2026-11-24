@@ -1066,13 +1066,18 @@ const server=http.createServer(async(req,res)=>{
       if (!forceRefresh && rhgCatalogCache.data && now - rhgCatalogCache.updatedAt < RHG_CATALOG_TTL) {
         return send(res,200,{ok:true,...rhgCatalogCache.data,cached:true,updatedAt:rhgCatalogCache.updatedAt});
       }
-      const [materials, services] = await Promise.all([
+      const [materials, services, clients] = await Promise.all([
         callRHGSheets("MATERIAIS"),
-        callRHGSheets("SERVIÇOS")
+        callRHGSheets("SERVIÇOS"),
+        callRHGSheets("CLIENTES")
       ]);
       rhgCatalogCache = {
         updatedAt: now,
-        data: {materials:Array.isArray(materials)?materials:[],services:Array.isArray(services)?services:[]}
+        data: {
+          materials:Array.isArray(materials)?materials:[],
+          services:Array.isArray(services)?services:[],
+          clients:Array.isArray(clients)?clients:[]
+        }
       };
       return send(res,200,{ok:true,...rhgCatalogCache.data,cached:false,updatedAt:now});
     } catch(error) {

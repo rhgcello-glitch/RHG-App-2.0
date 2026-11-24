@@ -181,7 +181,7 @@ function collect(){
  const materialSubtotal=$$('.material-grid.row').reduce((sum,r)=>sum+(r.querySelector('.supply').value==='RHGonçalves'?(+r.querySelector('.qty').value||0)*(+r.querySelector('.unit').value||0):0),0);
  const discount=+$('#discount').value||0;
  return {id:existing?.id||`DRAFT-${Date.now()}`,quoteNumber:existing?.quoteNumber||null,date:existing?.date||new Date().toISOString(),updatedAt:new Date().toISOString(),status:$('#quoteStatus')?.value||existing?.status||DEFAULT_STATUS,
- client:{id:existing?.client?.id||'',name:$('#clientName').value,phone:$('#clientPhone').value,type:$('#clientType').value,profile:$('#clientProfile').value,address:$('#clientAddress').value},
+ client:{id:existing?.client?.id||window.rhgSelectedClient?.id||'',name:$('#clientName').value,phone:$('#clientPhone').value,type:$('#clientType').value,profile:$('#clientProfile').value,address:$('#clientAddress').value},
  description:$('#serviceDescription').value,quoteDescription:existing?.quoteDescription||'',quoteDescriptionFingerprint:existing?.quoteDescriptionFingerprint||'',services:$$('.service-grid.row').map(r=>({qty:+r.querySelector('.qty').value||0,desc:r.querySelector('.desc').value,unit:+r.querySelector('.unit').value||0})),
  materials:$$('.material-grid.row').map(r=>({qty:+r.querySelector('.qty').value||0,desc:r.querySelector('.desc').value,unit:+r.querySelector('.unit').value||0,supply:r.querySelector('.supply').value})),
  subtotal:serviceSubtotal+materialSubtotal,discount,total:Math.max(0,serviceSubtotal+materialSubtotal-discount),conditions:$('#conditions').value,isOfficial:!!existing?.isOfficial,version:Number(existing?.version||0),_sheetRow:existing?._sheetRow||null};
@@ -1302,7 +1302,7 @@ async function rhgLoadCatalog(force = false) {
     .then(async response => {
       const data = await response.json();
       if (!response.ok || !data.ok) throw new Error(data.error || 'Falha ao carregar a Base RHG.');
-      rhgCatalogLocal = {materials:data.materials || [], services:data.services || []};
+      rhgCatalogLocal = {materials:data.materials || [], services:data.services || [], clients:data.clients || []};
       rhgCatalogLocalAt = Date.now();
       return rhgCatalogLocal;
     })
@@ -1445,3 +1445,94 @@ function rhgSetupQuoteAutocomplete() {
   document.querySelectorAll('.material-grid.row').forEach(row=>rhgAttachAutocomplete(row,'material'));
 }
 rhgSetupQuoteAutocomplete();
+
+// =========================================================
+// RHG APP 2.0.1 — AUTOCOMPLETE DE CLIENTES
+// Busca na aba CLIENTES e preenche os dados do orçamento.
+// =========================================================
+function rhgClientValue(item, ...keys) {
+  for (const key of keys) {
+    const value = item?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== '') return String(value).trim();
+  }
+  return '';
+}
+function rhgHideClientAutocomplete() {
+  document.querySelector('.rhg-client-autocomplete')?.remove();
+}
+function rhgSelectClient(item) {
+  const id = rhgClientValue(item, 'ID Cliente', 'ID');
+  const name = rhgClientValue(item, 'Nome/Razão Social', 'Nome', 'Cliente');
+  const phone = rhgClientValue(item, 'Telefone', 'WhatsApp', 'Celular');
+  const address = rhgClientValue(item, 'Endereço', 'Endereco');
+  const type = rhgClientValue(item, 'Tipo', 'Tipo de Cliente');
+  const profile = rhgClientValue(item, 'Perfil do Cliente', 'Perfil');
+  $('#clientName').value = name;
+  $('#clientPhone').value = phone;
+  $('#clientAddress').value = address;
+  if (type && [...$('#clientType').options].some(o => rhgNorm(o.value) === rhgNorm(type))) $('#clientType').value = [...$('#clientType').options].find(o => rhgNorm(o.value) === rhgNorm(type)).value;
+  if (profile && [...$('#clientProfile').options].some(o => rhgNorm(o.value) === rhgNorm(profile))) $('#clientProfile').value = [...$('#clientProfile').options].find(o => rhgNorm(o.value) === rhgNorm(profile)).value;
+  window.rhgSelectedClient = {id, name, phone, address, type, profile};
+  rhgHideClientAutocomplete();
+}
+function rhgShowClientAutocomplete(input, clients) {
+  rhgHideClientAutocomplete();
+  const wrap = input.closest('.desc-wrap');
+  if (!wrap) return;
+  const panel = document.createElement('div');
+  panel.className = 'rhg-autocomplete rhg-client-autocomplete';
+  const query = input.value.trim();
+  const matches = clients.map(item => {
+    const name = rhgClientValue(item, 'Nome/Razão Social', 'Nome', 'Cliente');
+    const phone = rhgClientValue(item, 'Telefone', 'WhatsApp', 'Celular');
+    return {item, score: Math.max(rhgCatalogScore(query, name), rhgCatalogScore(query, phone))};
+  }).filter(x => x.score > 0 && rhgClientValue(x.item, 'Ativo').toLowerCase() !== 'não')
+    .sort((a,b) => b.score-a.score).slice(0,7);
+  matches.forEach(({item}) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'rhg-autocomplete-option';
+    const name = document.createElement('strong');
+    name.textContent = rhgClientValue(item, 'Nome/Razão Social', 'Nome', 'Cliente') || 'Cliente sem nome';
+    const detail = document.createElement('small');
+    detail.textContent = [rhgClientValue(item, 'Telefone', 'WhatsApp', 'Celular'), rhgClientValue(item, 'Endereço', 'Endereco')].filter(Boolean).join(' · ');
+    button.append(name, detail);
+    button.addEventListener('mousedown', event => event.preventDefault());
+    button.addEventListener('click', () => rhgSelectClient(item));
+    panel.appendChild(button);
+  });
+  if (!matches.length) {
+    const empty = document.createElement('div');
+    empty.className = 'rhg-autocomplete-option';
+    empty.textContent = 'Nenhum cliente correspondente encontrado.';
+    panel.appendChild(empty);
+  }
+  wrap.appendChild(panel);
+}
+function rhgSetupClientAutocomplete() {
+  const input = $('#clientName');
+  if (!input || input.dataset.rhgClientAutocomplete === '1') return;
+  input.dataset.rhgClientAutocomplete = '1';
+  let timer;
+  input.addEventListener('focus', async () => {
+    try {
+      const catalog = await rhgLoadCatalog();
+      if (input.value.trim().length >= 2) rhgShowClientAutocomplete(input, catalog.clients || []);
+    } catch (error) { console.warn('Busca de clientes RHG:', error.message); }
+  });
+  input.addEventListener('input', () => {
+    window.rhgSelectedClient = null;
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      if (input.value.trim().length < 2) { rhgHideClientAutocomplete(); return; }
+      try {
+        const catalog = await rhgLoadCatalog();
+        rhgShowClientAutocomplete(input, catalog.clients || []);
+      } catch (error) { console.warn('Busca de clientes RHG:', error.message); }
+    }, 180);
+  });
+  input.addEventListener('blur', () => setTimeout(rhgHideClientAutocomplete, 200));
+}
+rhgSetupClientAutocomplete();
+
+
