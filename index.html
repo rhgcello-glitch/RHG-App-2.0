@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#111111"><link rel="manifest" href="manifest.json">
-<title>RHGonçalves | Gestão de Orçamentos</title><link rel="stylesheet" href="styles.css?v=20-photos1">
+<title>RHGonçalves | Gestão de Orçamentos</title><link rel="stylesheet" href="styles.css?v=20-quotes1">
 </head>
 <body>
 <header class="app-header">
@@ -20,6 +20,7 @@
   <button data-page="dashboard" class="nav active"><span>⌂</span> Início</button>
   <button data-page="quote" class="nav"><span>＋</span> Novo orçamento</button>
   <button data-page="history" class="nav"><span>▤</span> Orçamentos</button>
+  <button data-page="drafts" class="nav"><span>▧</span> Rascunhos</button>
   <button data-page="assistant" class="nav"><span>✦</span> Assistente RHG-Bot</button>
   <button data-page="database" class="nav"><span>▦</span> Base RHG</button>
   <div class="nav-foot">RHG-App · V2.0</div>
@@ -67,11 +68,12 @@
 <details class="card accordion-card" data-accordion="conditions"><summary class="accordion-summary"><span class="accordion-number">7</span><span class="accordion-heading"><strong>Condições comerciais</strong><small>Validade, garantia e formas de pagamento</small></span><span class="accordion-chevron">⌄</span></summary><div class="accordion-body"><textarea id="conditions" rows="4">Orçamento válido por 7 dias.
 Garantia de mão de obra: 90 dias.
 Pagamento: Pix, cartão ou dinheiro.</textarea></div></details>
-<div class="actions"><button id="saveBtn" class="btn ghost">Salvar orçamento</button><button id="pdfBtn" class="btn primary">Gerar PDF</button><button id="whatsBtn" class="btn whatsapp">WhatsApp</button></div>
+<div class="actions"><button id="saveDraftBtn" class="btn ghost">Salvar rascunho</button><button id="saveBtn" class="btn ghost">Salvar orçamento</button><button id="pdfBtn" class="btn primary">Gerar PDF</button><button id="whatsBtn" class="btn whatsapp">WhatsApp</button></div>
 </section>
 
 <section id="history" class="page hidden"><div class="title"><div><h1>Histórico de orçamentos</h1><p>Pesquise e acompanhe os orçamentos salvos neste dispositivo.</p></div></div>
 <div class="card"><div class="search"><input id="historySearch" placeholder="Buscar por cliente, serviço ou número"><select id="historyStatus"><option value="">Todos</option><option>Em análise</option><option>Enviado</option><option>Aprovado</option><option>Em execução</option><option>Concluído</option><option>Recusado</option><option>Cancelado</option></select></div><div id="historyList"></div></div></section>
+<section id="drafts" class="page hidden"><div class="title"><div><h1>Rascunhos</h1><p>Propostas em preparação, ainda não registradas como orçamentos oficiais.</p></div></div><div class="card"><div id="draftList"></div></div></section>
 <section id="database" class="page hidden">
 
 <div class="title">
@@ -146,7 +148,7 @@ Pagamento: Pix, cartão ou dinheiro.</textarea></div></details>
 
 <template id="serviceTpl"><div class="row service-grid item-card"><div class="desc-wrap item-description"><label>Descrição do serviço<input class="desc" placeholder="Ex.: instalação de ponto elétrico"><small class="source"></small></label></div><label class="item-field">Quantidade<input class="qty" type="number" min="0" value="1"></label><label class="item-field">Valor unitário (R$)<input class="unit" type="number" min="0" step=".01" value="0"></label><div class="item-total"><span>Subtotal</span><b class="line">R$ 0,00</b></div><button class="remove" type="button" aria-label="Remover serviço">Remover ×</button></div></template>
 <template id="materialTpl"><div class="row material-grid item-card"><div class="desc-wrap item-description"><label>Material / especificação<input class="desc" placeholder="Ex.: cabo flexível 750V – 2,5 mm²"><small class="source"></small></label></div><label class="item-field">Quantidade<input class="qty" type="number" min="0" step=".01" value="1"></label><label class="item-field">Valor unitário (R$)<input class="unit" type="number" min="0" step=".01" value="0"></label><label class="item-field supply-field">Fornecimento<select class="supply"><option>RHGonçalves</option><option>Cliente</option><option>Sem preço</option></select></label><div class="item-total"><span>Subtotal</span><b class="line">R$ 0,00</b></div><button class="remove" type="button" aria-label="Remover material">Remover ×</button></div></template>
-<script src="app.js?v=20-photos1"></script>
+<script src="app.js?v=20-quotes1"></script>
 
 <script>
 (function () {

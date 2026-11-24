@@ -103,6 +103,19 @@ async function writeRHGSheets(sheet, action, data = {}, row = null) {
 
   return result;
 }
+async function callRHGSheetsAction(action, payload = {}) {
+  if (!RHG_SHEETS_URL) throw new Error("RHG_SHEETS_URL não configurada.");
+  const response = await fetch(RHG_SHEETS_URL, {
+    method: "POST", headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({...payload, action, apiKey:RHG_SHEETS_API_KEY})
+  });
+  const text = await response.text();
+  let data;
+  try { data = JSON.parse(text); } catch { throw new Error("Resposta inválida do Google Apps Script."); }
+  if (!response.ok || data.ok === false) throw new Error(data.error || `Google Apps Script retornou HTTP ${response.status}`);
+  return data;
+}
+
 async function callRHGPhotoAction(action, payload = {}) {
   if (!RHG_SHEETS_URL) {
     throw new Error("RHG_SHEETS_URL não configurada.");
@@ -899,7 +912,8 @@ const server=http.createServer(async(req,res)=>{
   "MATERIAIS ASSOCIADOS",
   "PERFIS CLIENTE",
   "ORIGENS E TIPOS",
-  "CONFLITOS E DUPLICIDADES"
+  "CONFLITOS E DUPLICIDADES",
+  "HISTÓRICO DE ALTERAÇÕES ORÇAMENTOS"
 ];
 
 
@@ -1077,78 +1091,32 @@ const server=http.createServer(async(req,res)=>{
     try{
       const rows=await callRHGSheets("ORÇAMENTOS");
       const quotes=(Array.isArray(rows)?rows:[]).map((row,index)=>({
-        _sheetRow:index+2, // linha 1 = cabeçalho
-        id:String(row["ID Interno"]||""),
-        quoteNumber:String(row["Número do Orçamento"]||""),
-        date:row["Data"]||"",
-        updatedAt:row["Data"]||"",
+        _sheetRow:Number(row._row||index+2), id:String(row["ID Interno"]||""),
+        quoteNumber:String(row["Número do Orçamento"]||""), date:row["Data"]||"",
+        updatedAt:row["Atualizado em"]||row["Data"]||"", version:Number(row["Versão"]||1),
         status:String(row["Status"]||"Em análise"),
-        client:{
-          name:String(row["Cliente"]||""),
-          phone:"",
-          type:"Residencial",
-          profile:"Comum",
-          address:""
-        },
-        description:String(row["Observações"]||""),
-        quoteDescription:String(row["Observações"]||""),
-        discount:Number(String(row["Desconto"]||0).replace(',','.'))||0,
-        conditions:"",
-        subtotal:Number(String(row["Subtotal"]||0).replace(',','.'))||0,
-        total:Number(String(row["Total"]||0).replace(',','.'))||0,
-        services:parseJsonField(row["Serviços"],[]),
-        materials:parseJsonField(row["Materiais"],[]),
-        idCliente:String(row["ID Cliente"]||""),
-        fonteDocumento:String(row["Fonte do Documento"]||""),
-        tipoRegistro:String(row["Tipo de Registro"]||"")
+        client:{id:String(row["ID Cliente"]||""),name:String(row["Cliente"]||""),phone:String(row["Telefone do Cliente"]||""),type:String(row["Tipo de Cliente"]||"Residencial"),profile:String(row["Perfil do Cliente"]||"Comum"),address:String(row["Endereço do Cliente"]||"")},
+        description:String(row["Descrição do Serviço"]||row["Observações"]||""),
+        quoteDescription:String(row["Descrição do Orçamento"]||""),
+        discount:Number(row["Desconto"]||0), conditions:String(row["Condições Comerciais"]||""),
+        subtotal:Number(row["Subtotal"]||0),total:Number(row["Total"]||0),
+        services:parseJsonField(row["Serviços"],[]),materials:parseJsonField(row["Materiais"],[]),
+        fonteDocumento:String(row["Fonte do Documento"]||""),tipoRegistro:String(row["Tipo de Registro"]||"")
       })).filter(q=>q.id || q.quoteNumber);
       return send(res,200,{ok:true,quotes});
-    }catch(e){
-      return send(res,502,{ok:false,error:e.message});
-    }
+    }catch(e){return send(res,502,{ok:false,error:e.message});}
   }
 
   if(req.method==="POST" && req.url==="/api/rhg/quotes"){
-    let raw="";
-    req.on("data",c=>raw+=c);
-    req.on("end",async()=>{
-      try{
-        const body=JSON.parse(raw||"{}");
-        const d=body.quote||body.data||{};
-        if(!d.id) throw new Error("Orçamento sem ID.");
-
-        // Lê a aba atual para localizar o ID Interno. Isso impede que
-        // cada salvamento crie uma nova linha do mesmo orçamento.
-        const rows=await callRHGSheets("ORÇAMENTOS");
-        const rowsArray=Array.isArray(rows)?rows:[];
-        const existingIndex=rowsArray.findIndex(row=>String(row["ID Interno"]||"")===String(d.id));
-        const sheetRow=existingIndex>=0 ? Number(rowsArray[existingIndex]._row || existingIndex+2) : null;
-
-        const data={
-          "ID Interno":String(d.id),
-          "Número do Orçamento":String(d.quoteNumber||""),
-          "Data":String(d.date||new Date().toISOString()),
-          "ID Cliente":String(d.client?.id||d.clientId||d.idCliente||""),
-          "Cliente":String(d.client?.name||""),
-          "Serviços":JSON.stringify(d.services||[]),
-          "Materiais":JSON.stringify(d.materials||[]),
-          "Subtotal":Number(d.subtotal ?? 0),
-          "Desconto":Number(d.discount||0),
-          "Total":Number(d.total ?? 0),
-          "Status":String(d.status||"Em análise"),
-          "Observações":String(d.observations||d.description||d.quoteDescription||""),
-          "Fonte do Documento":String(d.source||"RHG-App"),
-          "Tipo de Registro":String(d.recordType||"ORÇAMENTO")
-        };
-
-        const action=sheetRow ? "update" : "append";
-        const result=await writeRHGSheets("ORÇAMENTOS",action,data,sheetRow);
-        return send(res,200,{ok:true,action,row:sheetRow,result});
-      }catch(e){
-        return send(res,502,{ok:false,error:e.message});
-      }
-    });
-    return;
+    try{
+      const body=await readJsonRequest(req);
+      const d=body.quote||body.data||{};
+      if(!d.id) throw new Error("Orçamento sem ID.");
+      if(!d.client?.name?.trim()) throw new Error("Nome do cliente não informado.");
+      const quote={...d,subtotal:Number(d.subtotal||0),discount:Number(d.discount||0),total:Number(d.total||0)};
+      const result=await callRHGSheetsAction("saveQuote",{quote});
+      return send(res,200,{ok:true,...result});
+    }catch(e){return send(res,502,{ok:false,error:e.message});}
   }
 
   try{

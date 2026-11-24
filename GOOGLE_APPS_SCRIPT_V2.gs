@@ -22,7 +22,8 @@ const ALLOWED_SHEETS = [
   'MATERIAIS ASSOCIADOS',
   'PERFIS CLIENTE',
   'ORIGENS E TIPOS',
-  'CONFLITOS E DUPLICIDADES'
+  'CONFLITOS E DUPLICIDADES',
+  'HISTÓRICO DE ALTERAÇÕES ORÇAMENTOS'
 ];
 
 function jsonResponse(data) {
@@ -182,6 +183,114 @@ function handleRHGPhotoAction(action, body) {
   throw new Error('Ação de foto não reconhecida.');
 }
 
+
+// =====================================================
+// ORÇAMENTOS OFICIAIS — gravação com histórico de versões
+// A aba de auditoria é criada automaticamente, sem apagar dados existentes.
+// =====================================================
+const RHG_QUOTE_EXTRA_HEADERS = [
+  'Telefone do Cliente','Tipo de Cliente','Perfil do Cliente','Endereço do Cliente',
+  'Descrição do Serviço','Descrição do Orçamento','Condições Comerciais','Atualizado em','Versão'
+];
+const RHG_QUOTE_AUDIT_HEADERS = [
+  'ID Alteração','ID Interno','Número do Orçamento','Data e Hora','Operação','Versão Anterior','Nova Versão','Dados Anteriores','Dados Atualizados'
+];
+function ensureHeaders(sheet, requiredHeaders) {
+  if (sheet.getLastColumn() < 1) {
+    sheet.getRange(1, 1, 1, requiredHeaders.length).setValues([requiredHeaders]);
+    return requiredHeaders.slice();
+  }
+  let headers = getHeaders(sheet);
+  requiredHeaders.forEach(header => {
+    if (!headers.includes(header)) {
+      sheet.getRange(1, headers.length + 1).setValue(header);
+      headers.push(header);
+    }
+  });
+  return headers;
+}
+function quoteSnapshotFromRow(headers, values) {
+  const out = {};
+  headers.forEach((h,i) => { if (h) out[h] = values[i]; });
+  return out;
+}
+function saveOfficialQuote(quote) {
+  if (!quote || !quote.id) throw new Error('Orçamento sem ID interno.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const ss = getSpreadsheet();
+    const sheet = ss.getSheetByName('ORÇAMENTOS');
+    if (!sheet) throw new Error('A aba ORÇAMENTOS não foi encontrada.');
+    const headers = ensureHeaders(sheet, RHG_QUOTE_EXTRA_HEADERS);
+    const idCol = headers.indexOf('ID Interno') + 1;
+    if (!idCol) throw new Error('A aba ORÇAMENTOS precisa da coluna ID Interno.');
+    const lastRow = sheet.getLastRow();
+    let rowNumber = 0;
+    if (lastRow >= 2) {
+      const ids = sheet.getRange(2, idCol, lastRow - 1, 1).getDisplayValues().flat();
+      const idx = ids.findIndex(v => String(v) === String(quote.id));
+      if (idx >= 0) rowNumber = idx + 2;
+    }
+    const isUpdate = rowNumber > 0;
+    let previous = {};
+    let previousVersion = 0;
+    if (isUpdate) {
+      const oldValues = sheet.getRange(rowNumber, 1, 1, headers.length).getValues()[0];
+      previous = quoteSnapshotFromRow(headers, oldValues);
+      previousVersion = Number(previous['Versão'] || 1);
+    }
+    let quoteNumber = isUpdate ? String(previous['Número do Orçamento'] || quote.quoteNumber || '').trim() : '';
+    if (!isUpdate) {
+      const prefix = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'MMyy');
+      const numberCol = headers.indexOf('Número do Orçamento') + 1;
+      const nums = lastRow >= 2 ? sheet.getRange(2, numberCol, lastRow - 1, 1).getDisplayValues().flat() : [];
+      const max = nums.reduce((m,v) => {
+        const match = String(v).match(new RegExp('^' + prefix + '-(\\d+)$'));
+        return match ? Math.max(m, Number(match[1]) || 0) : m;
+      }, 0);
+      quoteNumber = prefix + '-' + String(max + 1).padStart(3, '0');
+    }
+    if (isUpdate && previous['Número do Orçamento']) quoteNumber = String(previous['Número do Orçamento']);
+    const version = isUpdate ? previousVersion + 1 : 1;
+    const now = new Date();
+    const values = {
+      'ID Interno':String(quote.id),'Número do Orçamento':quoteNumber,
+      'Data':quote.date || now,'ID Cliente':String(quote.client && quote.client.id || ''),
+      'Cliente':String(quote.client && quote.client.name || ''),
+      'Serviços':JSON.stringify(quote.services || []),'Materiais':JSON.stringify(quote.materials || []),
+      'Subtotal':Number(quote.subtotal || 0),'Desconto':Number(quote.discount || 0),
+      'Total':Number(quote.total || 0),'Status':String(quote.status || 'Em análise'),
+      'Observações':String(quote.description || ''),'Fonte do Documento':'RHG-App 2.0',
+      'Tipo de Registro':'ORÇAMENTO','Telefone do Cliente':String(quote.client && quote.client.phone || ''),
+      'Tipo de Cliente':String(quote.client && quote.client.type || ''),
+      'Perfil do Cliente':String(quote.client && quote.client.profile || ''),
+      'Endereço do Cliente':String(quote.client && quote.client.address || ''),
+      'Descrição do Serviço':String(quote.description || ''),
+      'Descrição do Orçamento':String(quote.quoteDescription || ''),
+      'Condições Comerciais':String(quote.conditions || ''),
+      'Atualizado em':now,'Versão':version
+    };
+    const rowValues = headers.map(h => Object.prototype.hasOwnProperty.call(values,h) ? values[h] : (isUpdate ? previous[h] : ''));
+    if (isUpdate) sheet.getRange(rowNumber, 1, 1, headers.length).setValues([rowValues]);
+    else { sheet.appendRow(rowValues); rowNumber = sheet.getLastRow(); }
+
+    const audit = ss.getSheetByName('HISTÓRICO DE ALTERAÇÕES ORÇAMENTOS') || ss.insertSheet('HISTÓRICO DE ALTERAÇÕES ORÇAMENTOS');
+    ensureHeaders(audit, RHG_QUOTE_AUDIT_HEADERS);
+    const operation = isUpdate ? 'EDIÇÃO' : 'CRIAÇÃO';
+    const auditRow = {
+      'ID Alteração':'ALT-' + Utilities.getUuid(), 'ID Interno':String(quote.id),
+      'Número do Orçamento':quoteNumber,'Data e Hora':now,'Operação':operation,
+      'Versão Anterior':isUpdate ? previousVersion : 0,'Nova Versão':version,
+      'Dados Anteriores':isUpdate ? JSON.stringify(previous) : '',
+      'Dados Atualizados':JSON.stringify(values)
+    };
+    const auditHeaders = getHeaders(audit);
+    audit.appendRow(auditHeaders.map(h => Object.prototype.hasOwnProperty.call(auditRow,h) ? auditRow[h] : ''));
+    return {quote:Object.assign({}, quote, {quoteNumber, updatedAt:now.toISOString(), version, isOfficial:true, _sheetRow:rowNumber}), action:isUpdate?'update':'append', row:rowNumber, version};
+  } finally { lock.releaseLock(); }
+}
+
 function doGet(e) {
   try {
     verifyApiKey(e && e.parameter ? e.parameter.apiKey : '');
@@ -198,6 +307,7 @@ function doPost(e) {
     const body = JSON.parse((e && e.postData && e.postData.contents) || '{}');
     verifyApiKey(body.apiKey);
     const action = body.action;
+    if (action === 'saveQuote') return jsonResponse({ok:true, ...saveOfficialQuote(body.quote || {})});
     if (String(action || '').indexOf('photo_') === 0) return jsonResponse(handleRHGPhotoAction(action, body));
     const sheet = body.sheet;
     if (!action) throw new Error('Ação não informada.');

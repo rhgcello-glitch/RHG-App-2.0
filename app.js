@@ -1,6 +1,6 @@
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const money=n=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(Number(n)||0);
-const services=$('#services'),materials=$('#materials'),draftKey='rhgDraft',historyKey='rhgHistory';
+const services=$('#services'),materials=$('#materials'),draftKey='rhgDraft',draftsKey='rhgDrafts',historyKey='rhgHistory';
 const DEFAULT_STATUS='Em análise';
 
 let sharedHistoryCache=[];
@@ -177,37 +177,64 @@ function calc(){
 }
 function collect(){
  const existing=JSON.parse(localStorage.getItem(draftKey)||'null');
- return {id:existing?.id||Date.now(),quoteNumber:existing?.quoteNumber||null,date:existing?.date||new Date().toISOString(),status:$('#quoteStatus')?.value||existing?.status||DEFAULT_STATUS,
- client:{name:$('#clientName').value,phone:$('#clientPhone').value,type:$('#clientType').value,profile:$('#clientProfile').value,address:$('#clientAddress').value},
+ const serviceSubtotal=$$('.service-grid.row').reduce((sum,r)=>sum+(+r.querySelector('.qty').value||0)*(+r.querySelector('.unit').value||0),0);
+ const materialSubtotal=$$('.material-grid.row').reduce((sum,r)=>sum+(r.querySelector('.supply').value==='RHGonçalves'?(+r.querySelector('.qty').value||0)*(+r.querySelector('.unit').value||0):0),0);
+ const discount=+$('#discount').value||0;
+ return {id:existing?.id||`DRAFT-${Date.now()}`,quoteNumber:existing?.quoteNumber||null,date:existing?.date||new Date().toISOString(),updatedAt:new Date().toISOString(),status:$('#quoteStatus')?.value||existing?.status||DEFAULT_STATUS,
+ client:{id:existing?.client?.id||'',name:$('#clientName').value,phone:$('#clientPhone').value,type:$('#clientType').value,profile:$('#clientProfile').value,address:$('#clientAddress').value},
  description:$('#serviceDescription').value,quoteDescription:existing?.quoteDescription||'',quoteDescriptionFingerprint:existing?.quoteDescriptionFingerprint||'',services:$$('.service-grid.row').map(r=>({qty:+r.querySelector('.qty').value||0,desc:r.querySelector('.desc').value,unit:+r.querySelector('.unit').value||0})),
  materials:$$('.material-grid.row').map(r=>({qty:+r.querySelector('.qty').value||0,desc:r.querySelector('.desc').value,unit:+r.querySelector('.unit').value||0,supply:r.querySelector('.supply').value})),
- discount:+$('#discount').value||0,conditions:$('#conditions').value};
+ subtotal:serviceSubtotal+materialSubtotal,discount,total:Math.max(0,serviceSubtotal+materialSubtotal-discount),conditions:$('#conditions').value,isOfficial:!!existing?.isOfficial,version:Number(existing?.version||0),_sheetRow:existing?._sheetRow||null};
 }
-function nextQuoteNumber(){
- const h=JSON.parse(localStorage.getItem(historyKey)||'[]');
- const now=new Date();
- const prefix=String(now.getMonth()+1).padStart(2,'0')+String(now.getFullYear()).slice(-2);
- const nums=h.filter(x=>x.quoteNumber?.startsWith(prefix+'-')).map(x=>Number(x.quoteNumber.split('-')[1])||0);
- return prefix+'-'+String((nums.length?Math.max(...nums):0)+1).padStart(3,'0');
-}
-function ensureQuoteNumber(d){if(!d.quoteNumber)d.quoteNumber=nextQuoteNumber();return d;}
 function saveDraft(){
- const before=JSON.parse(localStorage.getItem(draftKey)||'null');
- const wasNew=!before?.quoteNumber;
- const d=ensureQuoteNumber(collect());
- $('#quoteNumberLabel').textContent=`Orçamento ${d.quoteNumber}`;
+ const d=collect();
+ d.isOfficial=!!d.isOfficial;
  localStorage.setItem(draftKey,JSON.stringify(d));
- if(wasNew)showSavedToast(d.quoteNumber);
- let h=dedupeHistory([d,...JSON.parse(localStorage.getItem(historyKey)||'[]')]);
- localStorage.setItem(historyKey,JSON.stringify(h));
- sharedHistoryCache=h;
- renderHistory();
- scheduleHistorySync(d);
+ const drafts=JSON.parse(localStorage.getItem(draftsKey)||'[]');
+ const index=drafts.findIndex(x=>String(x.id)===String(d.id));
+ if(index>=0)drafts[index]=d;else drafts.unshift(d);
+ localStorage.setItem(draftsKey,JSON.stringify(drafts));
+ $('#quoteNumberLabel').textContent=d.quoteNumber?`Orçamento ${d.quoteNumber} · edição em rascunho`:'Rascunho não numerado';
+ renderDrafts();
  return d;
 }
+function renderDrafts(){
+ const el=$('#draftList');if(!el)return;
+ const drafts=JSON.parse(localStorage.getItem(draftsKey)||'[]');
+ el.innerHTML='';
+ if(!drafts.length){el.innerHTML='<p class="hint">Nenhum rascunho salvo neste dispositivo.</p>';return;}
+ drafts.forEach(d=>{
+   const card=document.createElement('div');card.className='history-item';
+   const title=document.createElement('strong');title.textContent=(d.quoteNumber?`Orçamento ${d.quoteNumber} · `:'Rascunho · ')+(d.client?.name||'Cliente não informado');
+   const date=document.createElement('small');date.textContent='Última edição: '+new Date(d.updatedAt||d.date||Date.now()).toLocaleString('pt-BR');
+   const detail=document.createElement('div');detail.textContent=(d.description||'Sem descrição')+' · '+money(d.total||0);
+   const open=document.createElement('button');open.className='btn ghost';open.textContent='Abrir rascunho';
+   open.onclick=()=>{localStorage.setItem(draftKey,JSON.stringify(d));loadDraft(d);showPage('quote');};
+   const del=document.createElement('button');del.className='btn ghost';del.textContent='Excluir';
+   del.onclick=()=>{if(!confirm('Excluir este rascunho?'))return;localStorage.setItem(draftsKey,JSON.stringify(JSON.parse(localStorage.getItem(draftsKey)||'[]').filter(x=>String(x.id)!==String(d.id))));renderDrafts();};
+   card.append(title,date,detail,open,del);el.appendChild(card);
+ });
+}
+async function saveOfficialQuote(){
+ const d=collect();
+ if(!d.client.name.trim()) throw new Error('Informe o nome do cliente antes de salvar o orçamento.');
+ if(!d.services.some(x=>x.desc.trim()) && !d.materials.some(x=>x.desc.trim())) throw new Error('Adicione ao menos um serviço ou material antes de salvar.');
+ const response=await fetch('/api/rhg/quotes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({quote:d})});
+ const result=await response.json();
+ if(!response.ok||!result.ok||!result.quote) throw new Error(result.error||'Não foi possível confirmar a gravação do orçamento.');
+ const saved=normalizeQuoteFromServer(result.quote);
+ saved.isOfficial=true;
+ localStorage.setItem(draftKey,JSON.stringify(saved));
+ localStorage.setItem(draftsKey,JSON.stringify(JSON.parse(localStorage.getItem(draftsKey)||'[]').filter(x=>String(x.id)!==String(saved.id))));
+ renderDrafts();
+ await loadSharedHistory();
+ $('#quoteNumberLabel').textContent=`Orçamento ${saved.quoteNumber}`;
+ showSavedToast(saved.quoteNumber);
+ return saved;
+}
 
-function loadDraft(){
- const d=JSON.parse(localStorage.getItem(draftKey)||'null');if(!d){$('#quoteNumberLabel').textContent='Ainda não salvo';renderPhotos(null);return;}
+function loadDraft(providedDraft){
+ const d=providedDraft||JSON.parse(localStorage.getItem(draftKey)||'null');if(!d){$('#quoteNumberLabel').textContent='Ainda não salvo';renderPhotos(null);return;}
  $('#quoteNumberLabel').textContent=d.quoteNumber?`Orçamento ${d.quoteNumber}`:'Ainda não salvo';$('#clientName').value=d.client.name||'';$('#clientPhone').value=d.client.phone||'';$('#clientType').value=d.client.type||'Residencial';$('#clientProfile').value=d.client.profile||'Comum';$('#clientAddress').value=d.client.address||'';$('#serviceDescription').value=d.description||'';$('#quoteStatus').value=d.status||DEFAULT_STATUS;$('#discount').value=d.discount||0;$('#conditions').value=d.conditions||$('#conditions').value;
  services.innerHTML='';materials.innerHTML='';(d.services||[]).forEach(x=>addRow('service',x));(d.materials||[]).forEach(x=>addRow('material',x));calc();renderPhotos(d.id);
 }
@@ -249,22 +276,22 @@ async function clearAll(){
 }
 function renderHistory(){
  const q=$('#historySearch').value.toLowerCase(),status=$('#historyStatus').value;
- const h=dedupeHistory(sharedHistoryCache.length?sharedHistoryCache:JSON.parse(localStorage.getItem(historyKey)||'[]'));
+ const h=dedupeHistory(sharedHistoryCache);
  const list=h.filter(x=>(!status||x.status===status)&&(`${x.client?.name||''} ${x.description||''} ${x.quoteNumber||''}`.toLowerCase().includes(q)));
  $('#historyList').innerHTML=list.length?list.map(x=>`<div class="history-item"><strong>Orçamento ${x.quoteNumber||'—'} · ${x.client?.name||'Cliente sem nome'}</strong><small>${new Date(x.date).toLocaleString('pt-BR')}</small><span class="status-badge status-${String(x.status||'').toLowerCase().replace(/[^a-zà-ÿ0-9]+/gi,'-')}">${x.status||DEFAULT_STATUS}</span><div>${x.description||'Sem descrição'} · <b>${money((x.services||[]).reduce((a,s)=>a+s.qty*s.unit,0)+(x.materials||[]).filter(m=>m.supply==='RHGonçalves').reduce((a,m)=>a+m.qty*m.unit,0)-x.discount)}</b></div><button class="btn ghost" onclick="openHistory('${String(x.id).replace(/'/g,"\\'")}')">Abrir</button></div>`).join(''):'<p class="hint">Nenhum orçamento encontrado.</p>';
 }
 window.openHistory=async id=>{
-  let h=sharedHistoryCache.length?sharedHistoryCache:dedupeHistory(JSON.parse(localStorage.getItem(historyKey)||'[]'));
+  let h=sharedHistoryCache;
   let d=h.find(x=>String(x.id)===String(id));
   if(!d){await loadSharedHistory();h=sharedHistoryCache;d=h.find(x=>String(x.id)===String(id));}
   if(!d)return;
-  localStorage.setItem(draftKey,JSON.stringify(d));
+  localStorage.setItem(draftKey,JSON.stringify({...d,isOfficial:true}));
   loadDraft();showPage('quote');
 };
 
 function showPage(id){$$('.page').forEach(p=>p.classList.toggle('hidden',p.id!==id));$$('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===id));if(id==='history')renderHistory()}
 $$('[data-page]').forEach(b=>b.onclick=()=>showPage(b.dataset.page));
-$('#addService').onclick=()=>addRow('service');$('#addMaterial').onclick=()=>addRow('material');$('#discount').oninput=calc;$('#saveBtn').onclick=()=>saveDraft();
+$('#addService').onclick=()=>addRow('service');$('#addMaterial').onclick=()=>addRow('material');$('#discount').oninput=calc;$('#saveDraftBtn').onclick=()=>{saveDraft();alert('Rascunho salvo neste dispositivo. Ele não recebeu número oficial nem foi enviado ao histórico.');};$('#saveBtn').onclick=async()=>{const b=$('#saveBtn');const old=b.textContent;try{b.disabled=true;b.textContent='Salvando...';await saveOfficialQuote();}catch(e){alert('Não foi possível salvar o orçamento: '+e.message);}finally{b.disabled=false;b.textContent=old;}};
 $('#newBtn').onclick=async()=>{if(confirm('Começar um novo orçamento?'))await clearAll()};
 loadSharedHistory();
 $('#historySearch').oninput=renderHistory;$('#historyStatus').onchange=renderHistory;$('#quoteStatus').onchange=()=>{if(localStorage.getItem(draftKey))saveDraft()};
@@ -484,9 +511,9 @@ async function generateQuoteDescription(d){
   d.quoteDescription=description;
   d.quoteDescriptionFingerprint=fingerprint;
   localStorage.setItem(draftKey,JSON.stringify(d));
-  const h=JSON.parse(localStorage.getItem(historyKey)||'[]');
-  const i=h.findIndex(x=>x.id===d.id);
-  if(i>=0){h[i]=d;localStorage.setItem(historyKey,JSON.stringify(h));}
+  const drafts=JSON.parse(localStorage.getItem(draftsKey)||'[]');
+  const draftIndex=drafts.findIndex(x=>String(x.id)===String(d.id));
+  if(draftIndex>=0){drafts[draftIndex]=d;localStorage.setItem(draftsKey,JSON.stringify(drafts));renderDrafts();}
   return description;
 }
 
@@ -793,7 +820,7 @@ $('#pdfBtn').onclick=async()=>{
     btn.disabled=false;
   }
 };
-$('#whatsBtn').onclick=()=>{let d=ensureQuoteNumber(collect()),t=`Olá, ${d.client.name||'cliente'}! Segue o resumo do Orçamento ${d.quoteNumber||''} da RHGonçalves Serviços Elétricos.\n\nSERVIÇOS\n`;d.services.filter(x=>x.desc).forEach(x=>t+=`• ${x.qty}x ${x.desc} — ${money(x.unit)} cada\n`);t+=`Total de serviços: ${$('#serviceTotal').textContent}\n\nMATERIAIS\n`;d.materials.filter(x=>x.desc).forEach(x=>{t+=`• ${x.qty}x ${x.desc}`;t+=x.supply==='Sem preço'?' — sem preço':x.supply==='Cliente'?' — fornecido pelo cliente':` — ${money(x.unit)} cada`;t+='\n'});t+=`Total de materiais: ${$('#materialTotal').textContent}\n`;if(d.discount)t+=`Desconto: ${money(d.discount)}\n`;t+=`Total do orçamento: ${$('#grandTotal').textContent}`;window.open('https://wa.me/?text='+encodeURIComponent(t),'_blank')};
+$('#whatsBtn').onclick=()=>{let d=collect(),t=`Olá, ${d.client.name||'cliente'}! Segue o resumo da proposta ${d.quoteNumber?`Orçamento ${d.quoteNumber}`:'da RHGonçalves Serviços Elétricos'}.\n\nSERVIÇOS\n`;d.services.filter(x=>x.desc).forEach(x=>t+=`• ${x.qty}x ${x.desc} — ${money(x.unit)} cada\n`);t+=`Total de serviços: ${$('#serviceTotal').textContent}\n\nMATERIAIS\n`;d.materials.filter(x=>x.desc).forEach(x=>{t+=`• ${x.qty}x ${x.desc}`;t+=x.supply==='Sem preço'?' — sem preço':x.supply==='Cliente'?' — fornecido pelo cliente':` — ${money(x.unit)} cada`;t+='\n'});t+=`Total de materiais: ${$('#materialTotal').textContent}\n`;if(d.discount)t+=`Desconto: ${money(d.discount)}\n`;t+=`Total do orçamento: ${$('#grandTotal').textContent}`;window.open('https://wa.me/?text='+encodeURIComponent(t),'_blank')};
 
 $$('.chips button').forEach(b=>b.onclick=()=>$('#assistantInput').value=b.dataset.q);
 $('#assistantBtn').onclick=async()=>{
@@ -816,7 +843,7 @@ $('#assistantBtn').onclick=async()=>{
 };
 $('#copyBtn').onclick=async()=>{try{await navigator.clipboard.writeText($('#message').textContent);$('#copyBtn').textContent='Copiado!';setTimeout(()=>$('#copyBtn').textContent='Copiar mensagem',1000)}catch(e){}};
 
-if(!services.children.length)addRow('service');if(!materials.children.length)addRow('material');loadDraft();calc();
+if(!services.children.length)addRow('service');if(!materials.children.length)addRow('material');localStorage.removeItem(draftKey);renderDrafts();calc();
 // =====================================================
 // BASE RHG - GOOGLE SHEETS
 // =====================================================
