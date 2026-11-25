@@ -10,6 +10,83 @@ const RHG_BOT_ENDPOINT = process.env.RHG_BOT_ENDPOINT || "";
 const RHG_SHEETS_URL = process.env.RHG_SHEETS_URL || "";
 const RHG_SHEETS_API_KEY = process.env.RHG_SHEETS_API_KEY || "";
 
+// =====================================================
+// AUTENTICAÇÃO FIREBASE (sem dependência externa)
+// O backend valida o JWT do Firebase; nunca confia apenas
+// no e-mail ou em dados enviados pelo navegador.
+// =====================================================
+const RHG_FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "";
+const RHG_ADMIN_EMAIL = String(process.env.RHG_ADMIN_EMAIL || "").trim().toLowerCase();
+const RHG_AUTH_REQUIRED = String(process.env.RHG_AUTH_REQUIRED || "false").toLowerCase() === "true";
+const FIREBASE_CERTS_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
+let firebaseCertCache = { certs: null, expiresAt: 0 };
+
+function decodeJwtPart(part) {
+  return JSON.parse(Buffer.from(part, "base64url").toString("utf8"));
+}
+
+async function getFirebaseSigningCerts() {
+  if (firebaseCertCache.certs && Date.now() < firebaseCertCache.expiresAt) return firebaseCertCache.certs;
+  const response = await fetch(FIREBASE_CERTS_URL);
+  if (!response.ok) throw new Error("Não foi possível validar a assinatura do Firebase.");
+  const certs = await response.json();
+  const cacheControl = response.headers.get("cache-control") || "";
+  const maxAge = Number((cacheControl.match(/max-age=(\d+)/i) || [])[1] || 300);
+  firebaseCertCache = { certs, expiresAt: Date.now() + Math.max(60, maxAge) * 1000 };
+  return certs;
+}
+
+async function verifyFirebaseIdToken(token) {
+  if (!RHG_FIREBASE_PROJECT_ID) throw new Error("FIREBASE_PROJECT_ID não configurado.");
+  const parts = String(token || "").split(".");
+  if (parts.length !== 3) throw new Error("Token de autenticação inválido.");
+  const header = decodeJwtPart(parts[0]);
+  const claims = decodeJwtPart(parts[1]);
+  if (header.alg !== "RS256" || !header.kid) throw new Error("Assinatura do token não aceita.");
+  const certs = await getFirebaseSigningCerts();
+  const cert = certs[header.kid];
+  if (!cert) { firebaseCertCache.expiresAt = 0; throw new Error("Chave de assinatura do Firebase desconhecida."); }
+  const verifier = crypto.createVerify("RSA-SHA256");
+  verifier.update(`${parts[0]}.${parts[1]}`);
+  verifier.end();
+  if (!verifier.verify(cert, Buffer.from(parts[2], "base64url"))) throw new Error("Assinatura do token inválida.");
+
+  const now = Math.floor(Date.now() / 1000);
+  const issuer = `https://securetoken.google.com/${RHG_FIREBASE_PROJECT_ID}`;
+  if (claims.aud !== RHG_FIREBASE_PROJECT_ID || claims.iss !== issuer || !claims.sub || claims.sub.length > 128 ||
+      !Number.isFinite(claims.exp) || claims.exp <= now || !Number.isFinite(claims.iat) || claims.iat > now + 300 ||
+      !Number.isFinite(claims.auth_time) || claims.auth_time > now + 300) {
+    throw new Error("Token expirado ou emitido para outro projeto.");
+  }
+  return claims;
+}
+
+async function authenticateApiRequest(req, res) {
+  if (!RHG_AUTH_REQUIRED) return { ok: true, user: null, bypass: true };
+  const authorization = String(req.headers.authorization || "");
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    send(res, 401, { ok: false, error: "Autenticação necessária.", code: "AUTH_REQUIRED" });
+    return { ok: false };
+  }
+  try {
+    const claims = await verifyFirebaseIdToken(match[1]);
+    if (claims.email_verified !== true) {
+      send(res, 403, { ok: false, error: "Confirme seu e-mail Google antes de continuar.", code: "EMAIL_NOT_VERIFIED" });
+      return { ok: false };
+    }
+    const email = String(claims.email || "").trim().toLowerCase();
+    if (!RHG_ADMIN_EMAIL || email !== RHG_ADMIN_EMAIL) {
+      send(res, 403, { ok: false, error: "Esta etapa está restrita à administração RHG.", code: "ADMIN_ONLY" });
+      return { ok: false };
+    }
+    return { ok: true, user: { uid: claims.sub, email, name: claims.name || "" }, role: "admin" };
+  } catch (error) {
+    send(res, 401, { ok: false, error: "Não foi possível validar sua sessão Google.", code: "INVALID_TOKEN" });
+    return { ok: false };
+  }
+}
+
 const mime = {
   ".html":"text/html; charset=utf-8",
   ".js":"text/javascript; charset=utf-8",
@@ -1100,6 +1177,22 @@ const RHG_CATALOG_TTL = 3 * 60 * 1000;
 let rhgCatalogCache = {updatedAt:0,data:null};
 
 const server=http.createServer(async(req,res)=>{
+    // Health check permanece público para o monitoramento do Render.
+    if (req.method === "GET" && req.url.split("?")[0] === "/health") {
+      return send(res,200,{ok:true,app:"RHGonçalves Web App",status:"online",authRequired:RHG_AUTH_REQUIRED});
+    }
+
+    // Quando habilitada no ambiente de desenvolvimento, toda API exige
+    // token Firebase válido. Nesta primeira fase, somente o administrador
+    // pode usar as APIs existentes; a área de cliente virá com rotas próprias.
+    if (req.url.split("?")[0].startsWith("/api/")) {
+      const auth = await authenticateApiRequest(req,res);
+      if (!auth.ok) return;
+      if (req.method === "GET" && req.url.split("?")[0] === "/api/auth/session") {
+        return send(res,200,{ok:true,user:auth.user,role:auth.role || "legacy"});
+      }
+    }
+
     // =====================================================
     // RHG DATABASE API
     // =====================================================
@@ -1330,10 +1423,6 @@ const server=http.createServer(async(req,res)=>{
   }
 
   try{
-    if(req.method==="GET" && req.url.split("?")[0]==="/health"){
-      return send(res,200,{ok:true,app:"RHGonçalves Web App",status:"online"});
-    }
-
     if(req.method==="POST" && (req.url==="/api/rhg/interpret" || req.url==="/api/rhg/assistant" || req.url==="/api/rhg/quote-description")){
       try {
         const body=await readJsonRequest(req,18*1024*1024);

@@ -1,8 +1,8 @@
 {
   "name": "rhg-webapp",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "private": true,
-  "description": "RHGonçalves Web App 2.1 - RHG-Bot conversacional e gestão assistida da Base RHG",
+  "description": "RHGonçalves Web App 2.2 - Fundação de autenticação Firebase e segurança do backend",
   "scripts": {
     "start": "node server.js"
   },
