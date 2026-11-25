@@ -1,10 +1,12 @@
-const CACHE_NAME = 'rhg-app-v21-rhgbot';
+const CACHE_NAME = 'rhg-app-v214-identidade';
 const APP_SHELL = [
   '/',
   '/index.html',
-  '/styles.css?v=20261124-rhgbot',
-  '/app.js?v=20261124-rhgbot',
+  '/styles.css?v=20261125-rhg214',
+  '/app.js?v=20261125-rhg214',
   '/manifest.json',
+  '/rhg-logo.svg',
+  '/assets/rhg-symbol.svg',
   '/assets/icons/icon-192.png',
   '/assets/icons/icon-512.png'
 ];
