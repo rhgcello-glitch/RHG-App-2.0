@@ -955,11 +955,6 @@ async function assistantApproveProposals(messageItem,box,button) {
 }
 
 $$('.chips button').forEach(button=>button.onclick=()=>{$('#assistantInput').value=button.dataset.q;$('#assistantInput').focus()});
-$('#assistantChooseFiles').addEventListener('click',()=>{
-  const picker=$('#assistantFiles');
-  if(!picker) return;
-  picker.click();
-});
 $('#assistantFiles').addEventListener('change',event=>{
   const files=[...event.target.files||[]];
   for(const file of files){

@@ -34,3 +34,7 @@ Correção pontual sobre a versão 2.1 RHG-Bot, preservando a integração e os 
 - Conferência do fluxo de retry de fotos.
 
 Os testes são estáticos/locais; a confirmação final deve ser feita nos dispositivos reais após o deploy, especialmente em rede móvel.
+
+
+## Versão 2.1.2
+Correção de compatibilidade do seletor de arquivos no Opera GX. Consulte `README-v2.1.2-OPERA-GX.md`.

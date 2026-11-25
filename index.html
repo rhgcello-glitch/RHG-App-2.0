@@ -147,7 +147,7 @@ Pagamento: Pix, cartão ou dinheiro.</textarea></div></details>
       <div id="assistantAttachments" class="assistant-attachments"></div>
       <textarea id="assistantInput" rows="3" placeholder="Digite sua pergunta ou continue a conversa..."></textarea>
       <div class="assistant-composer-bottom">
-        <div class="assistant-file-actions"><button id="assistantChooseFiles" type="button" class="btn ghost assistant-file-button">＋ Anexar arquivo</button><input id="assistantFiles" type="file" accept=".pdf,.xlsx,.xlsm,.csv,.txt,.png,.jpg,.jpeg,.webp,application/pdf,text/csv,text/plain,image/*" multiple hidden><span class="hint">PDF, Excel, CSV, TXT ou imagem. Até 8 MB por arquivo e 12 MB no total.</span></div>
+        <div class="assistant-file-actions"><label for="assistantFiles" class="btn ghost assistant-file-button">＋ Anexar arquivo</label><input id="assistantFiles" class="assistant-file-input" type="file" accept=".pdf,.xlsx,.xlsm,.csv,.txt,.png,.jpg,.jpeg,.webp,application/pdf,text/csv,text/plain,image/*" multiple aria-label="Selecionar arquivos para anexar"><span class="hint">PDF, Excel, CSV, TXT ou imagem. Até 8 MB por arquivo e 12 MB no total.</span></div>
         <button id="assistantBtn" class="btn primary">Enviar pergunta ↗</button>
       </div>
       <span id="assistantStatus" class="hint"></span>
