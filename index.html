@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#111111"><link rel="manifest" href="manifest.json">
-<title>RHGonçalves | Gestão de Orçamentos</title><link rel="stylesheet" href="styles.css?v=20261124-rhgbot">
+<title>RHGonçalves | Gestão de Orçamentos</title><link rel="stylesheet" href="styles.css?v=20261125-rhgbot211">
 </head>
 <body>
 <header class="app-header">
@@ -147,7 +147,7 @@ Pagamento: Pix, cartão ou dinheiro.</textarea></div></details>
       <div id="assistantAttachments" class="assistant-attachments"></div>
       <textarea id="assistantInput" rows="3" placeholder="Digite sua pergunta ou continue a conversa..."></textarea>
       <div class="assistant-composer-bottom">
-        <div class="assistant-file-actions"><label for="assistantFiles" class="btn ghost assistant-file-button">＋ Anexar arquivo</label><input id="assistantFiles" type="file" accept=".pdf,.xlsx,.xlsm,.csv,.txt,.png,.jpg,.jpeg,.webp,application/pdf,text/csv,text/plain,image/*" multiple hidden><span class="hint">PDF, Excel, CSV, TXT ou imagem. Até 8 MB por arquivo e 12 MB no total.</span></div>
+        <div class="assistant-file-actions"><button id="assistantChooseFiles" type="button" class="btn ghost assistant-file-button">＋ Anexar arquivo</button><input id="assistantFiles" type="file" accept=".pdf,.xlsx,.xlsm,.csv,.txt,.png,.jpg,.jpeg,.webp,application/pdf,text/csv,text/plain,image/*" multiple hidden><span class="hint">PDF, Excel, CSV, TXT ou imagem. Até 8 MB por arquivo e 12 MB no total.</span></div>
         <button id="assistantBtn" class="btn primary">Enviar pergunta ↗</button>
       </div>
       <span id="assistantStatus" class="hint"></span>
@@ -160,7 +160,7 @@ Pagamento: Pix, cartão ou dinheiro.</textarea></div></details>
 
 <template id="serviceTpl"><div class="row service-grid item-card"><div class="desc-wrap item-description"><label>Descrição do serviço<input class="desc" placeholder="Ex.: instalação de ponto elétrico"><small class="source"></small></label></div><label class="item-field">Quantidade<input class="qty" type="number" min="0" value="1"></label><label class="item-field">Valor unitário (R$)<input class="unit" type="number" min="0" step=".01" value="0"></label><div class="item-total"><span>Subtotal</span><b class="line">R$ 0,00</b></div><button class="remove" type="button" aria-label="Remover serviço">Remover ×</button></div></template>
 <template id="materialTpl"><div class="row material-grid item-card"><div class="desc-wrap item-description"><label>Material / especificação<input class="desc" placeholder="Ex.: cabo flexível 750V – 2,5 mm²"><small class="source"></small></label></div><label class="item-field">Quantidade<input class="qty" type="number" min="0" step=".01" value="1"></label><label class="item-field">Valor unitário (R$)<input class="unit" type="number" min="0" step=".01" value="0"></label><label class="item-field supply-field">Fornecimento<select class="supply"><option>RHGonçalves</option><option>Cliente</option><option>Sem preço</option></select></label><div class="item-total"><span>Subtotal</span><b class="line">R$ 0,00</b></div><button class="remove" type="button" aria-label="Remover material">Remover ×</button></div></template>
-<script src="app.js?v=20261124-rhgbot"></script>
+<script src="app.js?v=20261125-rhgbot211"></script>
 
 <script>
 (function () {

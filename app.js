@@ -104,7 +104,19 @@ async function renderPhotos(quoteId){
      const desc=document.createElement('textarea');desc.className='photo-description';desc.placeholder='Descreva esta foto (opcional)';desc.value=photo.description||'';desc.rows=2;
      const btn=document.createElement('button');btn.type='button';btn.className='photo-remove';btn.textContent='×';btn.title='Remover foto';
      card.append(img,desc,btn);gallery.appendChild(card);
-     try{const image=await photoApi('get',{photoId:photo.id});img.src=image.dataUrl;}catch(err){img.alt='Não foi possível carregar esta imagem';}
+     try{
+       let image=null, lastError=null;
+       for(let attempt=0;attempt<3;attempt++){
+         try{
+           image=await photoApi('get',{photoId:photo.id,cacheBust:Date.now()+attempt});
+           if(!image?.dataUrl) throw new Error('A imagem não foi retornada pelo armazenamento.');
+           break;
+         }catch(err){lastError=err;if(attempt<2) await new Promise(resolve=>setTimeout(resolve,450*(attempt+1)));}
+       }
+       if(!image?.dataUrl) throw lastError||new Error('Imagem indisponível.');
+       img.decoding='async'; img.loading='eager'; img.src=image.dataUrl;
+       if(img.decode) await img.decode().catch(()=>{});
+     }catch(err){img.alt='Não foi possível carregar esta imagem. Tente atualizar a galeria.';img.title=err.message||'Falha ao carregar imagem';}
      desc.addEventListener('change',async()=>{try{await photoApi('update',{photoId:photo.id,description:desc.value});$('#photoStatus').textContent='Descrição da foto atualizada.';}catch(e){$('#photoStatus').textContent='Erro ao atualizar descrição: '+e.message;}});
      btn.onclick=async()=>{if(!confirm('Remover esta foto do orçamento?'))return;try{await photoApi('delete',{photoId:photo.id});await renderPhotos(quoteId);}catch(e){$('#photoStatus').textContent='Não foi possível remover a foto: '+e.message;}};
    }
@@ -943,6 +955,11 @@ async function assistantApproveProposals(messageItem,box,button) {
 }
 
 $$('.chips button').forEach(button=>button.onclick=()=>{$('#assistantInput').value=button.dataset.q;$('#assistantInput').focus()});
+$('#assistantChooseFiles').addEventListener('click',()=>{
+  const picker=$('#assistantFiles');
+  if(!picker) return;
+  picker.click();
+});
 $('#assistantFiles').addEventListener('change',event=>{
   const files=[...event.target.files||[]];
   for(const file of files){
