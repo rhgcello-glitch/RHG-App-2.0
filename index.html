@@ -133,7 +133,8 @@ Pagamento: Pix, cartão ou dinheiro.</textarea></div></details>
 </section>
 <section id="assistant" class="page hidden">
   <div class="title"><div><h1>💬 Assistente RHG-Bot</h1><p>Consultoria de orçamento, precificação, documentos e relacionamento com clientes.</p></div><button id="assistantNewChat" class="btn ghost">＋ Nova conversa</button></div>
-  <section class="card assistant-workspace">
+  <section class="card assistant-workspace" id="assistantWorkspace">
+    <div id="assistantDropOverlay" class="assistant-drop-overlay" aria-hidden="true"><div class="assistant-drop-message"><span>⇩</span><strong>Solte os arquivos para anexá-los</strong><small>PDF, Excel, CSV, TXT ou imagens</small></div></div>
     <div class="assistant-intro"><strong>Como posso ajudar?</strong><span>Faça perguntas, continue uma análise ou envie uma tabela, cotação ou orçamento para revisão.</span></div>
     <div class="chips">
       <button data-q="O cliente não respondeu ao orçamento. Como devo fazer o follow-up?">📩 Não respondeu</button>
@@ -160,7 +161,7 @@ Pagamento: Pix, cartão ou dinheiro.</textarea></div></details>
 
 <template id="serviceTpl"><div class="row service-grid item-card"><div class="desc-wrap item-description"><label>Descrição do serviço<input class="desc" placeholder="Ex.: instalação de ponto elétrico"><small class="source"></small></label></div><label class="item-field">Quantidade<input class="qty" type="number" min="0" value="1"></label><label class="item-field">Valor unitário (R$)<input class="unit" type="number" min="0" step=".01" value="0"></label><div class="item-total"><span>Subtotal</span><b class="line">R$ 0,00</b></div><button class="remove" type="button" aria-label="Remover serviço">Remover ×</button></div></template>
 <template id="materialTpl"><div class="row material-grid item-card"><div class="desc-wrap item-description"><label>Material / especificação<input class="desc" placeholder="Ex.: cabo flexível 750V – 2,5 mm²"><small class="source"></small></label></div><label class="item-field">Quantidade<input class="qty" type="number" min="0" step=".01" value="1"></label><label class="item-field">Valor unitário (R$)<input class="unit" type="number" min="0" step=".01" value="0"></label><label class="item-field supply-field">Fornecimento<select class="supply"><option>RHGonçalves</option><option>Cliente</option><option>Sem preço</option></select></label><div class="item-total"><span>Subtotal</span><b class="line">R$ 0,00</b></div><button class="remove" type="button" aria-label="Remover material">Remover ×</button></div></template>
-<script src="app.js?v=20261125-rhgbot211"></script>
+<script src="app.js?v=20261125-rhgbot213"></script>
 
 <script>
 (function () {

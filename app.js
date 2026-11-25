@@ -955,17 +955,50 @@ async function assistantApproveProposals(messageItem,box,button) {
 }
 
 $$('.chips button').forEach(button=>button.onclick=()=>{$('#assistantInput').value=button.dataset.q;$('#assistantInput').focus()});
-$('#assistantFiles').addEventListener('change',event=>{
-  const files=[...event.target.files||[]];
+function assistantAddFiles(fileList) {
+  const files=[...fileList||[]];
   for(const file of files){
     if(file.size>8*1024*1024){assistantSetStatus(`${file.name} excede o limite de 8 MB.`,true);continue;}
+    if(assistantPendingFiles.some(current=>current.name===file.name&&current.size===file.size&&current.lastModified===file.lastModified)){continue;}
     const totalBytes=assistantPendingFiles.reduce((sum,current)=>sum+current.size,0);
     if(totalBytes+file.size>12*1024*1024){assistantSetStatus('O conjunto de anexos não pode ultrapassar 12 MB por mensagem.',true);continue;}
     if(!/\.(pdf|xlsx|xlsm|csv|txt|png|jpe?g|webp)$/i.test(file.name)){assistantSetStatus(`Formato não aceito: ${file.name}.`,true);continue;}
     if(assistantPendingFiles.length>=4){assistantSetStatus('Anexe no máximo 4 arquivos por mensagem.',true);break;}
     assistantPendingFiles.push(file);
   }
-  assistantRenderAttachments(); event.target.value='';
+  assistantRenderAttachments();
+}
+$('#assistantFiles').addEventListener('change',event=>{
+  assistantAddFiles(event.target.files);
+  event.target.value='';
+});
+// Arrastar e soltar: funciona em toda a área de conversa no desktop.
+const assistantWorkspace=$('#assistantWorkspace');
+const assistantDropOverlay=$('#assistantDropOverlay');
+let assistantDragDepth=0;
+function assistantHasFileDrag(event){return [...(event.dataTransfer?.types||[])].includes('Files');}
+assistantWorkspace.addEventListener('dragenter',event=>{
+  if(!assistantHasFileDrag(event)) return;
+  event.preventDefault(); assistantDragDepth++;
+  assistantWorkspace.classList.add('assistant-drag-active');
+  assistantDropOverlay.setAttribute('aria-hidden','false');
+});
+assistantWorkspace.addEventListener('dragover',event=>{
+  if(!assistantHasFileDrag(event)) return;
+  event.preventDefault();
+  if(event.dataTransfer) event.dataTransfer.dropEffect='copy';
+});
+assistantWorkspace.addEventListener('dragleave',event=>{
+  if(!assistantHasFileDrag(event)) return;
+  event.preventDefault(); assistantDragDepth=Math.max(0,assistantDragDepth-1);
+  if(!assistantDragDepth){assistantWorkspace.classList.remove('assistant-drag-active');assistantDropOverlay.setAttribute('aria-hidden','true');}
+});
+assistantWorkspace.addEventListener('drop',event=>{
+  if(!assistantHasFileDrag(event)) return;
+  event.preventDefault(); assistantDragDepth=0;
+  assistantWorkspace.classList.remove('assistant-drag-active');assistantDropOverlay.setAttribute('aria-hidden','true');
+  assistantAddFiles(event.dataTransfer.files);
+  if(event.dataTransfer.files.length) assistantSetStatus(`${event.dataTransfer.files.length} arquivo(s) recebido(s). Revise os anexos e envie sua pergunta.`);
 });
 $('#assistantCancelReply').onclick=()=>{assistantReplyTo=null;$('#assistantReplyContext').classList.add('hidden')};
 $('#assistantNewChat').onclick=()=>{
