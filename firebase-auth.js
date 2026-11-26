@@ -5,7 +5,7 @@ import {
 } from 'https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js';
 
 const firebaseConfig = {
-  apiKey: 'AIzaSyAPjZ7JNMi0VlwO7c1FlP2F2wYUHdgksM',
+  apiKey: 'AIzaSyAPkJ7zJNMi0VlwO7c1FlP2F2wYUHdgksM',
   authDomain: 'rhg-app-901e6.firebaseapp.com',
   projectId: 'rhg-app-901e6',
   storageBucket: 'rhg-app-901e6.firebasestorage.app',
