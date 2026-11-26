@@ -184,3 +184,21 @@
 
 /* Identidade visual RHG 2.1.4 */
 .dashboard-note .brand-symbol{width:42px;height:42px;flex:0 0 42px;object-fit:contain;display:block}
+
+/* RHG 2.2.1 — autenticação Firebase */
+.auth-userbar{display:flex;align-items:center;gap:10px;font-size:12px;color:#e6edf2}
+.auth-gate{position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(8,11,14,.94);backdrop-filter:blur(8px)}
+.auth-gate.hidden{display:none}
+.auth-card{width:min(100%,430px);padding:34px 30px;text-align:center;background:#20262b;border:1px solid #46515a;border-radius:20px;box-shadow:0 24px 80px #0009}
+.auth-logo{width:74px;height:74px;object-fit:contain;margin:0 auto 12px}
+.auth-card .eyebrow{margin:0 0 8px;color:var(--yellow);font-size:11px;font-weight:800;letter-spacing:1.8px}
+.auth-card h1{margin:0 0 10px;font-size:28px}
+.auth-card>p:not(.eyebrow){color:#c0c9d0;line-height:1.5}
+.auth-google{display:flex;justify-content:center;align-items:center;gap:12px;width:100%;min-height:50px;margin:22px 0 12px;font-size:15px}
+.auth-google span{font-size:20px;font-weight:900}
+.auth-google:disabled{opacity:.6;cursor:wait}
+.auth-status{min-height:22px;color:#cbd5dc;font-size:13px}
+.auth-status.error{color:#ff8e8e}
+.auth-card small{display:block;margin-top:18px;color:#87939d;line-height:1.45}
+body.rhg-auth-locked{overflow:hidden}
+@media(max-width:480px){.auth-card{padding:28px 20px}.auth-userbar{gap:6px}.auth-userbar .btn{padding:8px 10px}}

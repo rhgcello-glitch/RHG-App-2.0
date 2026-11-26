@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#111111"><link rel="manifest" href="manifest.json">
-<title>RHGonçalves | Gestão de Orçamentos</title><link rel="stylesheet" href="styles.css?v=20261125-rhg214">
+<title>RHGonçalves | Gestão de Orçamentos</title><link rel="stylesheet" href="styles.css?v=20261126-auth1">
 </head>
 <body>
 <header class="app-header">
@@ -11,8 +11,20 @@
     <img class="brand-mark-img" src="/assets/rhg-symbol.svg" alt="" aria-hidden="true">
     <div class="brand-wordmark"><strong>RHGonçalves</strong><small>Serviços Elétricos</small></div>
   </div>
-  <span class="app-version">RHG-App · V2.1.4</span>
+  <span class="app-version">RHG-App · V2.2.1</span>
+  <div class="auth-userbar"><span id="authUser"></span><button id="authSignOut" class="btn ghost hidden" type="button">Sair</button></div>
 </header>
+<div id="authGate" class="auth-gate" role="dialog" aria-modal="true" aria-labelledby="authTitle">
+  <section class="auth-card">
+    <img src="/assets/rhg-symbol.svg" alt="" class="auth-logo">
+    <p class="eyebrow">ACESSO SEGURO</p>
+    <h1 id="authTitle">RHGonçalves</h1>
+    <p>Entre com sua conta Google autorizada para acessar o sistema de gestão.</p>
+    <button id="googleLogin" class="btn primary auth-google" type="button"><span aria-hidden="true">G</span> Entrar com Google</button>
+    <p id="authStatus" class="auth-status" aria-live="polite">Verificando sessão…</p>
+    <small>O acesso administrativo é restrito à conta autorizada pela RHG.</small>
+  </section>
+</div>
 
 <div class="app-shell">
 <nav class="app-nav" aria-label="Navegação principal">
@@ -162,6 +174,7 @@ Pagamento: Pix, cartão ou dinheiro.</textarea></div></details>
 <template id="serviceTpl"><div class="row service-grid item-card"><div class="desc-wrap item-description"><label>Descrição do serviço<input class="desc" placeholder="Ex.: instalação de ponto elétrico"><small class="source"></small></label></div><label class="item-field">Quantidade<input class="qty" type="number" min="0" value="1"></label><label class="item-field">Valor unitário (R$)<input class="unit" type="number" min="0" step=".01" value="0"></label><div class="item-total"><span>Subtotal</span><b class="line">R$ 0,00</b></div><button class="remove" type="button" aria-label="Remover serviço">Remover ×</button></div></template>
 <template id="materialTpl"><div class="row material-grid item-card"><div class="desc-wrap item-description"><label>Material / especificação<input class="desc" placeholder="Ex.: cabo flexível 750V – 2,5 mm²"><small class="source"></small></label></div><label class="item-field">Quantidade<input class="qty" type="number" min="0" step=".01" value="1"></label><label class="item-field">Valor unitário (R$)<input class="unit" type="number" min="0" step=".01" value="0"></label><label class="item-field supply-field">Fornecimento<select class="supply"><option>RHGonçalves</option><option>Cliente</option><option>Sem preço</option></select></label><div class="item-total"><span>Subtotal</span><b class="line">R$ 0,00</b></div><button class="remove" type="button" aria-label="Remover material">Remover ×</button></div></template>
 <script src="app.js?v=20261125-rhgbot213"></script>
+<script type="module" src="firebase-auth.js?v=20261126-auth1"></script>
 
 <script>
 (function () {
